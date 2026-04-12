@@ -152,6 +152,10 @@ func runPlan(cmd *cobra.Command, args []string) error {
 				result, err = runner.Probe(context.Background(), s.Component, s.Fact, vars)
 			} else {
 				rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
+				if err := probe.ValidateCommand(rendered, s.Command); err != nil {
+					fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
+					break
+				}
 				result, err = executor.Run(context.Background(), probe.Command{
 					Raw:       rendered,
 					Parse:     s.ParseMode,
@@ -162,6 +166,10 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
+			if err := probe.ValidateCommand(rendered, s.Command); err != nil {
+				fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
+				break
+			}
 			result, err = executor.Run(context.Background(), probe.Command{
 				Raw:       rendered,
 				Parse:     s.ParseMode,
