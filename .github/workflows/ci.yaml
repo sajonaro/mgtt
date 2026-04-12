@@ -15,6 +15,8 @@ jobs:
       - name: test
         run: go test ./...
       - name: build
-        run: go build ./cmd/mgtt
+        run: |
+          VERSION=$(cat VERSION)
+          go build -ldflags="-X github.com/sajonaro/mgtt/internal/cli.version=${VERSION}" ./cmd/mgtt
       - name: version
         run: ./mgtt version

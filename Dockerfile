@@ -7,7 +7,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /mgtt ./cmd/mgtt
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/sajonaro/mgtt/internal/cli.version=${VERSION}" -o /mgtt ./cmd/mgtt
 
 # Build kubernetes provider (separate Go module)
 WORKDIR /src/providers/kubernetes
