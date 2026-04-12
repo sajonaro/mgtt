@@ -1,0 +1,511 @@
+package provider
+
+import (
+	"testing"
+	"time"
+)
+
+// ---------------------------------------------------------------------------
+// Stdlib tests
+// ---------------------------------------------------------------------------
+
+func TestStdlib_HasAllPrimitives(t *testing.T) {
+	expected := map[string]string{
+		"int":        "int",
+		"float":      "float",
+		"bool":       "bool",
+		"string":     "string",
+		"duration":   "float",
+		"bytes":      "int",
+		"ratio":      "float",
+		"percentage": "float",
+		"count":      "int",
+		"timestamp":  "string",
+	}
+
+	if len(Stdlib) != len(expected) {
+		t.Errorf("Stdlib has %d entries, want %d", len(Stdlib), len(expected))
+	}
+
+	for name, wantBase := range expected {
+		dt, ok := Stdlib[name]
+		if !ok {
+			t.Errorf("Stdlib missing %q", name)
+			continue
+		}
+		if dt.Name != name {
+			t.Errorf("Stdlib[%q].Name = %q, want %q", name, dt.Name, name)
+		}
+		if dt.Base != wantBase {
+			t.Errorf("Stdlib[%q].Base = %q, want %q", name, dt.Base, wantBase)
+		}
+	}
+}
+
+func TestStdlib_DurationHasUnits(t *testing.T) {
+	d, ok := Stdlib["duration"]
+	if !ok {
+		t.Fatal("Stdlib missing duration")
+	}
+
+	wantUnits := []string{"ms", "s", "m", "h", "d"}
+	if len(d.Units) != len(wantUnits) {
+		t.Errorf("duration units = %v, want %v", d.Units, wantUnits)
+	}
+	for i, u := range wantUnits {
+		if i >= len(d.Units) || d.Units[i] != u {
+			t.Errorf("duration.Units[%d] = %q, want %q", i, d.Units[i], u)
+		}
+	}
+
+	if d.Range == nil {
+		t.Fatal("duration.Range is nil")
+	}
+	if d.Range.Min == nil {
+		t.Fatal("duration.Range.Min is nil")
+	}
+	if *d.Range.Min != 0.0 {
+		t.Errorf("duration.Range.Min = %v, want 0.0", *d.Range.Min)
+	}
+	if d.Range.Max != nil {
+		t.Errorf("duration.Range.Max should be nil, got %v", *d.Range.Max)
+	}
+}
+
+func TestStdlib_RatioRange(t *testing.T) {
+	r, ok := Stdlib["ratio"]
+	if !ok {
+		t.Fatal("Stdlib missing ratio")
+	}
+	if r.Range == nil {
+		t.Fatal("ratio.Range is nil")
+	}
+	if r.Range.Min == nil || *r.Range.Min != 0.0 {
+		t.Errorf("ratio.Range.Min = %v, want 0.0", r.Range.Min)
+	}
+	if r.Range.Max == nil || *r.Range.Max != 1.0 {
+		t.Errorf("ratio.Range.Max = %v, want 1.0", r.Range.Max)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Load tests
+// ---------------------------------------------------------------------------
+
+const minimalYAML = `
+meta:
+  name: testprovider
+  version: 0.1.0
+  description: minimal test provider
+
+types:
+  mytype:
+    facts:
+      cpu_usage:
+        type: mgtt.percentage
+        ttl: 10s
+        probe:
+          cmd: "cat /proc/stat"
+          parse: float
+          cost: low
+    healthy: ["cpu_usage < 90"]
+    states:
+      ok:
+        when: "cpu_usage < 90"
+        description: normal load
+      overloaded:
+        when: "cpu_usage >= 90"
+        description: high cpu
+    default_active_state: ok
+    failure_modes:
+      overloaded:
+        can_cause: [slowness, timeout]
+`
+
+func TestLoadProvider_Minimal(t *testing.T) {
+	p, err := LoadFromBytes([]byte(minimalYAML))
+	if err != nil {
+		t.Fatalf("LoadFromBytes: %v", err)
+	}
+
+	if p.Meta.Name != "testprovider" {
+		t.Errorf("Meta.Name = %q, want testprovider", p.Meta.Name)
+	}
+	if p.Meta.Version != "0.1.0" {
+		t.Errorf("Meta.Version = %q, want 0.1.0", p.Meta.Version)
+	}
+
+	mt, ok := p.Types["mytype"]
+	if !ok {
+		t.Fatal("missing type mytype")
+	}
+
+	if len(mt.Facts) != 1 {
+		t.Errorf("mytype facts count = %d, want 1", len(mt.Facts))
+	}
+	fs, ok := mt.Facts["cpu_usage"]
+	if !ok {
+		t.Fatal("missing fact cpu_usage")
+	}
+	if fs.TypeName != "mgtt.percentage" {
+		t.Errorf("cpu_usage.TypeName = %q, want mgtt.percentage", fs.TypeName)
+	}
+	if fs.TTL != 10*time.Second {
+		t.Errorf("cpu_usage.TTL = %v, want 10s", fs.TTL)
+	}
+	if fs.Probe.Cost != "low" {
+		t.Errorf("cpu_usage.Probe.Cost = %q, want low", fs.Probe.Cost)
+	}
+
+	if len(mt.HealthyRaw) != 1 || mt.HealthyRaw[0] != "cpu_usage < 90" {
+		t.Errorf("HealthyRaw = %v, want [cpu_usage < 90]", mt.HealthyRaw)
+	}
+
+	if mt.DefaultActiveState != "ok" {
+		t.Errorf("DefaultActiveState = %q, want ok", mt.DefaultActiveState)
+	}
+
+	causes := mt.FailureModes["overloaded"]
+	if len(causes) != 2 || causes[0] != "slowness" || causes[1] != "timeout" {
+		t.Errorf("FailureModes[overloaded] = %v, want [slowness timeout]", causes)
+	}
+}
+
+func TestLoadProvider_StateOrder(t *testing.T) {
+	p, err := LoadFromBytes([]byte(minimalYAML))
+	if err != nil {
+		t.Fatalf("LoadFromBytes: %v", err)
+	}
+
+	mt := p.Types["mytype"]
+	if len(mt.States) != 2 {
+		t.Fatalf("states count = %d, want 2", len(mt.States))
+	}
+	if mt.States[0].Name != "ok" {
+		t.Errorf("States[0].Name = %q, want ok", mt.States[0].Name)
+	}
+	if mt.States[1].Name != "overloaded" {
+		t.Errorf("States[1].Name = %q, want overloaded", mt.States[1].Name)
+	}
+}
+
+func TestLoadFromFile_Kubernetes(t *testing.T) {
+	p, err := LoadFromFile("../../providers/kubernetes/provider.yaml")
+	if err != nil {
+		t.Fatalf("LoadFromFile kubernetes: %v", err)
+	}
+
+	if p.Meta.Name != "kubernetes" {
+		t.Errorf("Meta.Name = %q, want kubernetes", p.Meta.Name)
+	}
+
+	// Check ingress type exists.
+	ingress, ok := p.Types["ingress"]
+	if !ok {
+		t.Fatal("missing type ingress")
+	}
+	if _, ok := ingress.Facts["upstream_count"]; !ok {
+		t.Error("ingress missing fact upstream_count")
+	}
+
+	// Check deployment type exists.
+	deploy, ok := p.Types["deployment"]
+	if !ok {
+		t.Fatal("missing type deployment")
+	}
+
+	// Check 4 deployment states in correct order.
+	wantOrder := []string{"degraded", "draining", "starting", "live"}
+	if len(deploy.States) != len(wantOrder) {
+		t.Fatalf("deployment states count = %d, want %d", len(deploy.States), len(wantOrder))
+	}
+	for i, want := range wantOrder {
+		if deploy.States[i].Name != want {
+			t.Errorf("deployment.States[%d].Name = %q, want %q", i, deploy.States[i].Name, want)
+		}
+	}
+
+	// Verify degraded is before starting (critical design constraint).
+	degradedIdx := -1
+	startingIdx := -1
+	for i, s := range deploy.States {
+		switch s.Name {
+		case "degraded":
+			degradedIdx = i
+		case "starting":
+			startingIdx = i
+		}
+	}
+	if degradedIdx >= startingIdx {
+		t.Errorf("degraded (idx %d) must come before starting (idx %d)", degradedIdx, startingIdx)
+	}
+
+	// Verify deployment has 4 facts.
+	wantFacts := []string{"ready_replicas", "desired_replicas", "restart_count", "endpoints"}
+	for _, fn := range wantFacts {
+		if _, ok := deploy.Facts[fn]; !ok {
+			t.Errorf("deployment missing fact %q", fn)
+		}
+	}
+
+	// Check TTL is parsed correctly.
+	if deploy.Facts["ready_replicas"].TTL != 30*time.Second {
+		t.Errorf("ready_replicas.TTL = %v, want 30s", deploy.Facts["ready_replicas"].TTL)
+	}
+}
+
+func TestLoadFromFile_AWS(t *testing.T) {
+	p, err := LoadFromFile("../../providers/aws/provider.yaml")
+	if err != nil {
+		t.Fatalf("LoadFromFile aws: %v", err)
+	}
+
+	if p.Meta.Name != "aws" {
+		t.Errorf("Meta.Name = %q, want aws", p.Meta.Name)
+	}
+
+	rds, ok := p.Types["rds_instance"]
+	if !ok {
+		t.Fatal("missing type rds_instance")
+	}
+
+	if _, ok := rds.Facts["available"]; !ok {
+		t.Error("rds_instance missing fact available")
+	}
+	if _, ok := rds.Facts["connection_count"]; !ok {
+		t.Error("rds_instance missing fact connection_count")
+	}
+
+	if rds.DefaultActiveState != "live" {
+		t.Errorf("rds_instance.DefaultActiveState = %q, want live", rds.DefaultActiveState)
+	}
+
+	if len(rds.States) != 2 {
+		t.Errorf("rds_instance.States count = %d, want 2", len(rds.States))
+	}
+
+	causes := rds.FailureModes["stopped"]
+	if len(causes) != 3 {
+		t.Errorf("rds_instance FailureModes[stopped] = %v, want 3 entries", causes)
+	}
+
+	if rds.Facts["available"].TTL != 60*time.Second {
+		t.Errorf("available.TTL = %v, want 60s", rds.Facts["available"].TTL)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Registry tests
+// ---------------------------------------------------------------------------
+
+func loadTestProviders(t *testing.T) (*Registry, *Provider, *Provider) {
+	t.Helper()
+	k8s, err := LoadFromFile("../../providers/kubernetes/provider.yaml")
+	if err != nil {
+		t.Fatalf("load kubernetes: %v", err)
+	}
+	aws, err := LoadFromFile("../../providers/aws/provider.yaml")
+	if err != nil {
+		t.Fatalf("load aws: %v", err)
+	}
+	reg := NewRegistry()
+	reg.Register(k8s)
+	reg.Register(aws)
+	return reg, k8s, aws
+}
+
+func TestRegistry_ResolveType(t *testing.T) {
+	reg, _, _ := loadTestProviders(t)
+
+	// Resolve deployment → should come from kubernetes.
+	typ, provName, err := reg.ResolveType([]string{"kubernetes", "aws"}, "deployment")
+	if err != nil {
+		t.Fatalf("ResolveType deployment: %v", err)
+	}
+	if provName != "kubernetes" {
+		t.Errorf("provider = %q, want kubernetes", provName)
+	}
+	if typ.Name != "deployment" {
+		t.Errorf("type.Name = %q, want deployment", typ.Name)
+	}
+
+	// Resolve rds_instance → should come from aws.
+	typ, provName, err = reg.ResolveType([]string{"kubernetes", "aws"}, "rds_instance")
+	if err != nil {
+		t.Fatalf("ResolveType rds_instance: %v", err)
+	}
+	if provName != "aws" {
+		t.Errorf("provider = %q, want aws", provName)
+	}
+	if typ.Name != "rds_instance" {
+		t.Errorf("type.Name = %q, want rds_instance", typ.Name)
+	}
+}
+
+func TestRegistry_ResolveType_NotFound(t *testing.T) {
+	reg, _, _ := loadTestProviders(t)
+
+	_, _, err := reg.ResolveType([]string{"kubernetes", "aws"}, "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for unknown type, got nil")
+	}
+}
+
+func TestRegistry_PeckingOrder(t *testing.T) {
+	// Both providers declare "ingress" — first one wins.
+	// We'll use a synthetic provider that also declares "ingress".
+	const secondProvYAML = `
+meta:
+  name: second
+  version: 0.1.0
+types:
+  ingress:
+    facts: {}
+    states:
+      live:
+        when: "true"
+        description: always live
+    default_active_state: live
+`
+	second, err := LoadFromBytes([]byte(secondProvYAML))
+	if err != nil {
+		t.Fatalf("load second: %v", err)
+	}
+
+	k8s, err := LoadFromFile("../../providers/kubernetes/provider.yaml")
+	if err != nil {
+		t.Fatalf("load kubernetes: %v", err)
+	}
+
+	reg := NewRegistry()
+	reg.Register(k8s)    // registered first — higher priority
+	reg.Register(second) // registered second — lower priority
+
+	// kubernetes is listed first in componentProviders → wins.
+	_, provName, err := reg.ResolveType([]string{"kubernetes", "second"}, "ingress")
+	if err != nil {
+		t.Fatalf("ResolveType: %v", err)
+	}
+	if provName != "kubernetes" {
+		t.Errorf("provider = %q, want kubernetes (pecking order)", provName)
+	}
+
+	// second is listed first → wins.
+	_, provName, err = reg.ResolveType([]string{"second", "kubernetes"}, "ingress")
+	if err != nil {
+		t.Fatalf("ResolveType: %v", err)
+	}
+	if provName != "second" {
+		t.Errorf("provider = %q, want second (pecking order)", provName)
+	}
+}
+
+func TestRegistry_ExplicitNamespace(t *testing.T) {
+	// Even if kubernetes is listed first, explicit "aws.rds_instance" bypasses scan.
+	reg, _, _ := loadTestProviders(t)
+
+	typ, provName, err := reg.ResolveType([]string{"kubernetes"}, "aws.rds_instance")
+	if err != nil {
+		t.Fatalf("ResolveType aws.rds_instance: %v", err)
+	}
+	if provName != "aws" {
+		t.Errorf("provider = %q, want aws", provName)
+	}
+	if typ.Name != "rds_instance" {
+		t.Errorf("type.Name = %q, want rds_instance", typ.Name)
+	}
+}
+
+func TestRegistry_QueryMethods(t *testing.T) {
+	reg, _, _ := loadTestProviders(t)
+
+	// DefaultActiveStateFor
+	das, err := reg.DefaultActiveStateFor("kubernetes", "deployment")
+	if err != nil {
+		t.Fatalf("DefaultActiveStateFor: %v", err)
+	}
+	if das != "live" {
+		t.Errorf("DefaultActiveStateFor = %q, want live", das)
+	}
+
+	// FailureModesFor
+	causes, err := reg.FailureModesFor("kubernetes", "deployment", "degraded")
+	if err != nil {
+		t.Fatalf("FailureModesFor: %v", err)
+	}
+	if len(causes) == 0 {
+		t.Error("FailureModesFor degraded: expected non-empty causes")
+	}
+	foundUpstream := false
+	for _, c := range causes {
+		if c == "upstream_failure" {
+			foundUpstream = true
+		}
+	}
+	if !foundUpstream {
+		t.Errorf("FailureModesFor degraded: upstream_failure not in %v", causes)
+	}
+
+	// HealthyConditionsFor
+	healthy, err := reg.HealthyConditionsFor("kubernetes", "deployment")
+	if err != nil {
+		t.Fatalf("HealthyConditionsFor: %v", err)
+	}
+	if len(healthy) != 3 {
+		t.Errorf("HealthyConditionsFor = %v, want 3 conditions", healthy)
+	}
+
+	// FactsFor
+	facts, err := reg.FactsFor("kubernetes", "deployment")
+	if err != nil {
+		t.Fatalf("FactsFor: %v", err)
+	}
+	if len(facts) != 4 {
+		t.Errorf("FactsFor: count = %d, want 4", len(facts))
+	}
+
+	// StatesFor
+	states, err := reg.StatesFor("kubernetes", "deployment")
+	if err != nil {
+		t.Fatalf("StatesFor: %v", err)
+	}
+	if len(states) != 4 {
+		t.Errorf("StatesFor: count = %d, want 4", len(states))
+	}
+	if states[0].Name != "degraded" {
+		t.Errorf("StatesFor[0].Name = %q, want degraded", states[0].Name)
+	}
+
+	// ProbeCostFor
+	cost, err := reg.ProbeCostFor("kubernetes", "deployment", "ready_replicas")
+	if err != nil {
+		t.Fatalf("ProbeCostFor: %v", err)
+	}
+	if cost != "low" {
+		t.Errorf("ProbeCostFor = %q, want low", cost)
+	}
+
+	// ProbeCostFor — unknown fact
+	_, err = reg.ProbeCostFor("kubernetes", "deployment", "nonexistent_fact")
+	if err == nil {
+		t.Error("expected error for nonexistent fact, got nil")
+	}
+}
+
+func TestRegistry_GetAndAll(t *testing.T) {
+	reg, k8s, aws := loadTestProviders(t)
+
+	p, ok := reg.Get("kubernetes")
+	if !ok {
+		t.Fatal("Get kubernetes: not found")
+	}
+	if p != k8s {
+		t.Error("Get kubernetes: returned wrong provider")
+	}
+
+	all := reg.All()
+	if len(all) != 2 {
+		t.Errorf("All() count = %d, want 2", len(all))
+	}
+	_ = aws
+}
