@@ -39,3 +39,4 @@ providers/*/bin/
 mgtt-provider-kubernetes
 
 .claude
+.log
