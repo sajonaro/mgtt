@@ -378,7 +378,7 @@ From a local directory:
 mgtt provider install ./path/to/my-provider
 ```
 
-From a git repository (planned):
+From a git repository:
 ```bash
 mgtt provider install https://github.com/my-org/mgtt-provider-my-provider
 ```
