@@ -111,6 +111,23 @@ mgtt plan                          # troubleshoot a live system
 
 ## The model
 
+A YAML file describing your system: components, dependencies, and what "healthy" means. Here's the storefront from the examples above:
+
+```mermaid
+graph LR
+  internet([internet]) --> nginx
+  nginx[nginx\nreverse proxy] --> frontend
+  nginx --> api
+  frontend[frontend\nReact SPA] --> api
+  api[api\nNode.js] --> rds[(rds\nAWS RDS)]
+
+  style nginx     fill:#E1F5EE,stroke:#0F6E56,color:#085041
+  style frontend  fill:#E1F5EE,stroke:#0F6E56,color:#085041
+  style api       fill:#E1F5EE,stroke:#0F6E56,color:#085041
+  style rds       fill:#E6F1FB,stroke:#185FA5,color:#0C447C
+  style internet  fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+```
+
 ```yaml
 # system.model.yaml
 meta:
@@ -146,7 +163,37 @@ components:
       - connection_count < 500
 ```
 
-The model is the single source of truth. It's version-controlled alongside your infrastructure code.
+The model is version-controlled alongside your Helm charts and Terraform.
+
+## How it works
+
+### Troubleshooting (`mgtt plan`)
+
+![Troubleshooting mode](./docs/images/mgtt_trouble.png)
+
+- **model.yaml** — your system description: components, dependencies, health conditions. Written once.
+- **mgtt plan** — the constraint engine. Diffs your model against observed facts, eliminates healthy branches, ranks what to check next.
+- **state.yaml** — append-only log of everything observed during the incident. Timestamped, shareable, resumable.
+- **diff** — the engine's output: what's broken, what's unknown, what's confirmed healthy and can be ignored.
+- **next probe** — the single highest-value, lowest-cost check to run right now. Not a list of ten things — one thing.
+- **providers** — community plugins that supply the vocabulary: component types, health conditions, and the commands to collect facts.
+
+The loop repeats until one failure path remains — that's your root cause.
+
+### Simulation (`mgtt simulate`)
+
+![Simulation mode](./docs/images/mgtt_sim.png)
+
+- **model.yaml** — same file as troubleshooting. No separate artifact.
+- **scenario.yaml** — synthetic facts you author. Instead of probing a live system, you declare what's "true": `rds: available: false`. Nothing gets touched.
+- **mgtt simulate** — runs the same constraint engine against the injected facts.
+- **expected plan output** — what you assert the engine *should* conclude. If rds is down and api depends on it, the cascade should appear.
+- **pass / fail** — did the model reason correctly? Pass means the dependency graph and health conditions are wired right. Fail means you have a gap to fix before the real incident.
+- **scenario library** — a collection of named scenarios in version control, runnable in CI.
+
+### The engine
+
+The constraint engine is pure: no I/O, no credentials, no side effects. It takes a model, providers, and facts as input, and returns a ranked failure path tree. The same engine powers both `mgtt simulate` and `mgtt plan` — only the source of facts differs.
 
 ## Providers
 
@@ -166,31 +213,6 @@ mgtt provider install https://github.com/sajonaro/mgtt-provider-docker
 ```
 
 [Write your own provider](./providers/README.md) — three things: a YAML vocabulary, a binary that probes, an install hook.
-
-## How it works
-
-```mermaid
-graph LR
-  internet([internet]) --> nginx
-  nginx[nginx\nreverse proxy] --> frontend
-  nginx --> api
-  frontend[frontend\nReact SPA] --> api
-  api[api\nNode.js] --> rds[(rds\nAWS RDS)]
-
-  style nginx     fill:#E1F5EE,stroke:#0F6E56,color:#085041
-  style frontend  fill:#E1F5EE,stroke:#0F6E56,color:#085041
-  style api       fill:#E1F5EE,stroke:#0F6E56,color:#085041
-  style rds       fill:#E6F1FB,stroke:#185FA5,color:#0C447C
-  style internet  fill:#F1EFE8,stroke:#5F5E5A,color:#444441
-```
-
-The constraint engine starts from the outermost component and works inward. At each step it picks the probe that eliminates the most failure paths for the lowest cost. Healthy components are eliminated. The tree shrinks until one path remains — that's your root cause.
-
-The engine is pure: no I/O, no credentials, no side effects. The same engine powers `mgtt simulate` (injected facts) and `mgtt plan` (real probes). Providers handle the actual probing.
-
-![Troubleshooting mode](./docs/images/mgtt_trouble.png)
-
-![Simulation mode](./docs/images/mgtt_sim.png)
 
 ---
 
