@@ -1,4 +1,4 @@
-package provider
+package providersupport
 
 // Stdlib contains the 10 built-in primitive data types that all providers
 // can reference using the "mgtt." namespace prefix.

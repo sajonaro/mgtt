@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -31,9 +31,9 @@ var modelValidateCmd = &cobra.Command{
 		}
 
 		// Load embedded providers and build registry for type resolution.
-		reg := provider.NewRegistry()
-		for _, name := range provider.ListEmbedded() {
-			p, err := provider.LoadEmbedded(name)
+		reg := providersupport.NewRegistry()
+		for _, name := range providersupport.ListEmbedded() {
+			p, err := providersupport.LoadEmbedded(name)
 			if err == nil {
 				reg.Register(p)
 			}

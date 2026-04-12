@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // Validate runs all validation passes against the loaded model and returns a
 // ValidationResult. When reg is non-nil, pass 2 resolves component types
 // against the provider registry.
-func Validate(m *Model, reg *provider.Registry) *ValidationResult {
+func Validate(m *Model, reg *providersupport.Registry) *ValidationResult {
 	result := &ValidationResult{}
 
 	pass1Structural(m, result)
@@ -27,7 +27,7 @@ func Validate(m *Model, reg *provider.Registry) *ValidationResult {
 // Pass 2 — Type resolution
 // ---------------------------------------------------------------------------
 
-func pass2TypeResolution(m *Model, reg *provider.Registry, result *ValidationResult) {
+func pass2TypeResolution(m *Model, reg *providersupport.Registry, result *ValidationResult) {
 	for _, name := range m.Order {
 		comp := m.Components[name]
 		if comp.Type == "" {

@@ -8,7 +8,7 @@ import (
 
 	factspkg "mgtt/internal/facts"
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ func repoRoot() string {
 
 // loadStorefront loads the storefront model and both providers, returning the
 // model and a populated registry ready for Derive calls.
-func loadStorefront(t *testing.T) (*model.Model, *provider.Registry) {
+func loadStorefront(t *testing.T) (*model.Model, *providersupport.Registry) {
 	t.Helper()
 
 	root := repoRoot()
@@ -34,9 +34,9 @@ func loadStorefront(t *testing.T) (*model.Model, *provider.Registry) {
 		t.Fatalf("load storefront model: %v", err)
 	}
 
-	reg := provider.NewRegistry()
+	reg := providersupport.NewRegistry()
 	for _, name := range []string{"kubernetes", "aws"} {
-		p, err := provider.LoadFromFile(filepath.Join(root, "providers", name, "provider.yaml"))
+		p, err := providersupport.LoadFromFile(filepath.Join(root, "providers", name, "provider.yaml"))
 		if err != nil {
 			t.Fatalf("load provider %s: %v", name, err)
 		}

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 	"mgtt/internal/simulate"
 
@@ -45,9 +45,9 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load providers.
-	reg := provider.NewRegistry()
-	for _, name := range provider.ListEmbedded() {
-		p, err := provider.LoadEmbedded(name)
+	reg := providersupport.NewRegistry()
+	for _, name := range providersupport.ListEmbedded() {
+		p, err := providersupport.LoadEmbedded(name)
 		if err == nil {
 			reg.Register(p)
 		}

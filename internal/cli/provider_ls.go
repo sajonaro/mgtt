@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -14,10 +14,10 @@ var providerLsCmd = &cobra.Command{
 	Short: "List available providers",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		names := provider.ListEmbedded()
-		var providers []*provider.Provider
+		names := providersupport.ListEmbedded()
+		var providers []*providersupport.Provider
 		for _, name := range names {
-			p, err := provider.LoadEmbedded(name)
+			p, err := providersupport.LoadEmbedded(name)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not load provider %q: %v\n", name, err)
 				continue

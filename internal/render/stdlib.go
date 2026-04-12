@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // stdlibOrder is the canonical display order for stdlib types.
@@ -23,7 +23,7 @@ var stdlibOrder = []string{
 //	...
 func StdlibLs(w io.Writer) {
 	for _, name := range stdlibOrder {
-		dt, ok := provider.Stdlib[name]
+		dt, ok := providersupport.Stdlib[name]
 		if !ok {
 			continue
 		}
@@ -39,7 +39,7 @@ func StdlibLs(w io.Writer) {
 
 // StdlibInspect writes detailed information about a single stdlib type to w.
 func StdlibInspect(w io.Writer, name string) {
-	dt, ok := provider.Stdlib[name]
+	dt, ok := providersupport.Stdlib[name]
 	if !ok {
 		fmt.Fprintf(w, "  stdlib type %q not found\n", name)
 		return
@@ -61,7 +61,7 @@ func StdlibInspect(w io.Writer, name string) {
 //   - nil Range → "~"
 //   - Min only  → "0.."
 //   - Both      → "0..1"
-func formatRange(r *provider.Range) string {
+func formatRange(r *providersupport.Range) string {
 	if r == nil {
 		return "~"
 	}

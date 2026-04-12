@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -20,7 +20,7 @@ var providerInspectCmd = &cobra.Command{
 			typeName = args[1]
 		}
 
-		p, err := provider.LoadEmbedded(name)
+		p, err := providersupport.LoadEmbedded(name)
 		if err != nil {
 			return fmt.Errorf("provider %q: %w", name, err)
 		}

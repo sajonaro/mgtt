@@ -6,7 +6,7 @@ import (
 	"mgtt/internal/expr"
 	factspkg "mgtt/internal/facts"
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // Derivation holds the results of a state derivation pass over all components.
@@ -28,7 +28,7 @@ type Derivation struct {
 // (false, *UnresolvedError) the error is recorded and evaluation continues to
 // the next state (fall-through). If no state matches, the component's state is
 // set to "unknown".
-func Derive(m *model.Model, reg *provider.Registry, store *factspkg.Store) *Derivation {
+func Derive(m *model.Model, reg *providersupport.Registry, store *factspkg.Store) *Derivation {
 	d := &Derivation{
 		ComponentStates: make(map[string]string, len(m.Components)),
 		UnresolvedBy:    make(map[string][]expr.UnresolvedError),
@@ -50,7 +50,7 @@ func deriveOne(
 	name string,
 	comp *model.Component,
 	metaProviders []string,
-	reg *provider.Registry,
+	reg *providersupport.Registry,
 	store *factspkg.Store,
 	partialStates map[string]string,
 	unresolvedBy map[string][]expr.UnresolvedError,

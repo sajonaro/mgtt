@@ -6,7 +6,7 @@ import (
 
 	"mgtt/internal/facts"
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/state"
 )
 
@@ -16,7 +16,7 @@ import (
 //
 // If entry is non-empty it is used as the starting component; otherwise
 // the model's EntryPoint (first component with in-degree 0) is used.
-func Plan(m *model.Model, reg *provider.Registry, store *facts.Store, entry string) *PathTree {
+func Plan(m *model.Model, reg *providersupport.Registry, store *facts.Store, entry string) *PathTree {
 	// Stage 1 — Entry selection
 	if entry == "" {
 		entry = m.EntryPoint()
@@ -155,7 +155,7 @@ func enumeratePaths(m *model.Model, entry string) []Path {
 }
 
 // resolveDefaultActive looks up the default_active_state for a component's type.
-func resolveDefaultActive(comp *model.Component, metaProviders []string, reg *provider.Registry) string {
+func resolveDefaultActive(comp *model.Component, metaProviders []string, reg *providersupport.Registry) string {
 	providers := comp.Providers
 	if len(providers) == 0 {
 		providers = metaProviders
@@ -173,7 +173,7 @@ func resolveDefaultActive(comp *model.Component, metaProviders []string, reg *pr
 //
 // If no surviving paths exist or every reachable component already has all
 // facts collected, nil is returned (nothing left to probe).
-func suggestProbe(m *model.Model, reg *provider.Registry, store *facts.Store, tree *PathTree) *Probe {
+func suggestProbe(m *model.Model, reg *providersupport.Registry, store *facts.Store, tree *PathTree) *Probe {
 	// Collect unique components from surviving paths in BFS order.
 	// Include entry even if it's not the terminal of any path (it may have uncollected facts).
 	seen := map[string]bool{}

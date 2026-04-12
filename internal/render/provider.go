@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // ProviderInstall writes a one-line confirmation for a successfully installed
@@ -15,7 +15,7 @@ import (
 // Example:
 //
 //	  ✓ kubernetes  v1.0.0  auth: environment  access: kubectl read-only
-func ProviderInstall(w io.Writer, p *provider.Provider) {
+func ProviderInstall(w io.Writer, p *providersupport.Provider) {
 	fmt.Fprintf(w, "  %s %-12s  v%s  auth: %s  access: %s\n",
 		Checkmark(true),
 		p.Meta.Name,
@@ -27,7 +27,7 @@ func ProviderInstall(w io.Writer, p *provider.Provider) {
 
 // ProviderLs writes one line per provider with a checkmark, name, version,
 // and description to w.
-func ProviderLs(w io.Writer, providers []*provider.Provider) {
+func ProviderLs(w io.Writer, providers []*providersupport.Provider) {
 	if len(providers) == 0 {
 		fmt.Fprintln(w, "  no providers installed")
 		return
@@ -61,7 +61,7 @@ func ProviderLs(w io.Writer, providers []*provider.Provider) {
 // overview is shown (name, version, description, list of types). When typeName
 // is non-empty, detailed type information is shown (facts, healthy conditions,
 // states, default_active_state, failure_modes).
-func ProviderInspect(w io.Writer, p *provider.Provider, typeName string) {
+func ProviderInspect(w io.Writer, p *providersupport.Provider, typeName string) {
 	if typeName == "" {
 		providerOverview(w, p)
 		return
@@ -75,7 +75,7 @@ func ProviderInspect(w io.Writer, p *provider.Provider, typeName string) {
 }
 
 // providerOverview renders the provider summary view.
-func providerOverview(w io.Writer, p *provider.Provider) {
+func providerOverview(w io.Writer, p *providersupport.Provider) {
 	fmt.Fprintf(w, "  provider:    %s\n", p.Meta.Name)
 	fmt.Fprintf(w, "  version:     v%s\n", p.Meta.Version)
 	fmt.Fprintf(w, "  description: %s\n", p.Meta.Description)
@@ -102,7 +102,7 @@ func providerOverview(w io.Writer, p *provider.Provider) {
 }
 
 // typeDetail renders the detailed view for a single type.
-func typeDetail(w io.Writer, p *provider.Provider, t *provider.Type) {
+func typeDetail(w io.Writer, p *providersupport.Provider, t *providersupport.Type) {
 	fmt.Fprintf(w, "  provider:  %s\n", p.Meta.Name)
 	fmt.Fprintf(w, "  type:      %s\n", t.Name)
 	if t.Description != "" {

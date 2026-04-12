@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -77,7 +77,7 @@ func installProvider(w io.Writer, name string) error {
 	fmt.Fprintf(w, "  copied %s -> %s\n", srcDir, destDir)
 
 	// 3. Load provider.yaml to read hooks.
-	p, err := provider.LoadFromFile(filepath.Join(destDir, "provider.yaml"))
+	p, err := providersupport.LoadFromFile(filepath.Join(destDir, "provider.yaml"))
 	if err != nil {
 		return fmt.Errorf("load provider.yaml: %w", err)
 	}

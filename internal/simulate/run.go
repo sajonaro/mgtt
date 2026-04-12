@@ -7,12 +7,12 @@ import (
 	"mgtt/internal/engine"
 	"mgtt/internal/facts"
 	"mgtt/internal/model"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // Run executes a single simulation scenario against the model and returns
 // the result, including whether the scenario's expectations were met.
-func Run(m *model.Model, reg *provider.Registry, sc *Scenario) *Result {
+func Run(m *model.Model, reg *providersupport.Registry, sc *Scenario) *Result {
 	store := facts.NewInMemory()
 	for comp, kvs := range sc.Inject {
 		for k, v := range kvs {

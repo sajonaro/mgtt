@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -30,7 +30,7 @@ var stdlibInspectCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		if _, ok := provider.Stdlib[name]; !ok {
+		if _, ok := providersupport.Stdlib[name]; !ok {
 			return fmt.Errorf("stdlib type %q not found", name)
 		}
 		render.StdlibInspect(cmd.OutOrStdout(), name)

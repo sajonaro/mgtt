@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 )
 
 // testdataPath returns the absolute path to the testdata/models directory,
@@ -367,9 +367,9 @@ func TestValidate_TypeResolution(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Join(filepath.Dir(file), "..", "..")
 
-	reg := provider.NewRegistry()
+	reg := providersupport.NewRegistry()
 	for _, name := range []string{"kubernetes", "aws"} {
-		p, err := provider.LoadFromFile(filepath.Join(repoRoot, "providers", name, "provider.yaml"))
+		p, err := providersupport.LoadFromFile(filepath.Join(repoRoot, "providers", name, "provider.yaml"))
 		if err != nil {
 			t.Fatalf("LoadFromFile(%s): %v", name, err)
 		}
@@ -405,8 +405,8 @@ func TestValidate_UnknownType(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Join(filepath.Dir(file), "..", "..")
 
-	reg := provider.NewRegistry()
-	p, err := provider.LoadFromFile(filepath.Join(repoRoot, "providers", "kubernetes", "provider.yaml"))
+	reg := providersupport.NewRegistry()
+	p, err := providersupport.LoadFromFile(filepath.Join(repoRoot, "providers", "kubernetes", "provider.yaml"))
 	if err != nil {
 		t.Fatalf("LoadFromFile(kubernetes): %v", err)
 	}

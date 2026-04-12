@@ -17,7 +17,7 @@ import (
 	"mgtt/internal/probe"
 	probeexec "mgtt/internal/probe/exec"
 	"mgtt/internal/probe/fixture"
-	"mgtt/internal/provider"
+	"mgtt/internal/providersupport"
 	"mgtt/internal/render"
 	"mgtt/internal/state"
 
@@ -66,9 +66,9 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. Load providers (embedded).
-	reg := provider.NewRegistry()
-	for _, name := range provider.ListEmbedded() {
-		p, err := provider.LoadEmbedded(name)
+	reg := providersupport.NewRegistry()
+	for _, name := range providersupport.ListEmbedded() {
+		p, err := providersupport.LoadEmbedded(name)
 		if err == nil {
 			reg.Register(p)
 		}
@@ -211,7 +211,7 @@ func resolveCommand(command, providerName string) string {
 }
 
 // resolveDefaultActiveForCLI looks up the default_active_state for a component.
-func resolveDefaultActiveForCLI(comp *model.Component, metaProviders []string, reg *provider.Registry) string {
+func resolveDefaultActiveForCLI(comp *model.Component, metaProviders []string, reg *providersupport.Registry) string {
 	providers := comp.Providers
 	if len(providers) == 0 {
 		providers = metaProviders
