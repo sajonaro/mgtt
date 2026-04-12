@@ -14,6 +14,7 @@ import (
 
 	"mgtt/internal/engine"
 	"mgtt/internal/facts"
+	"mgtt/internal/incident"
 	"mgtt/internal/model"
 	"mgtt/internal/providersupport"
 	"mgtt/internal/providersupport/probe"
@@ -94,8 +95,14 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Create fact store (in-memory for now; incident integration is separate).
-	store := facts.NewInMemory()
+	// 4. Load fact store from active incident, or fall back to in-memory.
+	var store *facts.Store
+	inc, incErr := incident.Current()
+	if incErr == nil && inc.Store != nil {
+		store = inc.Store
+	} else {
+		store = facts.NewInMemory()
+	}
 
 	interactive := isInteractive()
 
@@ -191,6 +198,11 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			At:        time.Now(),
 			Raw:       result.Raw,
 		})
+		if store.IsDiskBacked() {
+			if err := store.Save(); err != nil {
+				fmt.Fprintf(w, "\n  warning: could not save state: %v\n", err)
+			}
+		}
 
 		// Determine health for display: re-derive state after adding fact.
 		derivation := state.Derive(m, reg, store)

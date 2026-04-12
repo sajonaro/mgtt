@@ -46,3 +46,9 @@ func (s *Store) AllComponents() []string {
 	}
 	return out
 }
+
+// IsDiskBacked reports whether the store is backed by a file on disk.
+// In-memory stores (created with NewInMemory) return false.
+func (s *Store) IsDiskBacked() bool {
+	return s.path != ""
+}
