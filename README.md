@@ -9,15 +9,14 @@ The result: faster root cause, no duplicated effort, and a complete incident rec
 ## Install
 
 ```bash
-go install mgtt/cmd/mgtt@latest
-```
+# One-liner (downloads binary or builds from source)
+curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
 
-Or build from source:
+# Or via Go
+go install github.com/sajonaro/mgtt/cmd/mgtt@latest
 
-```bash
-git clone https://github.com/sajonaro/mgtt.git
-cd mgtt
-go build ./cmd/mgtt
+# Or via Docker (no install needed)
+docker compose run --rm mgtt version
 ```
 
 ## Quick Start

@@ -3,8 +3,10 @@
 ## 1. Install
 
 ```bash
-go install mgtt/cmd/mgtt@latest
+curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
 ```
+
+Or: `go install github.com/sajonaro/mgtt/cmd/mgtt@latest`
 
 ## 2. Write a model
 
