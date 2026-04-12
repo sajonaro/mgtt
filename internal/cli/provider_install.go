@@ -37,31 +37,52 @@ func init() {
 	rootCmd.AddCommand(providerCmd)
 }
 
-// installProvider installs a provider by name or path.
-// If the argument contains a path separator or starts with ".", it's treated
-// as a directory path. Otherwise it's looked up by name in $MGTT_HOME/providers/
-// or ./providers/.
+// installProvider installs a provider by name, path, or git URL.
 //
-// Steps:
-//  1. Find source provider directory
-//  2. Copy it to ~/.mgtt/providers/<name>/
+// Resolution order:
+//  1. Git URL (https:// or git@) → clone to temp dir → install from there
+//  2. Local path (starts with . or / or contains separator) → use directly
+//  3. Name lookup → $MGTT_HOME/providers/<name>/ or ./providers/<name>/
+//
+// Steps after resolution:
+//  1. Load provider.yaml to get canonical name
+//  2. Copy to ~/.mgtt/providers/<name>/
 //  3. Run hooks/install.sh if declared
-//  4. Load and validate provider.yaml
-//  5. Render summary
+//  4. Render summary
 func installProvider(w io.Writer, nameOrPath string) error {
-	// 1. Determine source directory.
 	srcDir := ""
 
-	// Check if argument is a path (contains separator or starts with .)
-	if filepath.IsAbs(nameOrPath) || strings.HasPrefix(nameOrPath, ".") || strings.Contains(nameOrPath, string(filepath.Separator)) {
-		candidate := nameOrPath
-		if _, err := os.Stat(filepath.Join(candidate, "provider.yaml")); err == nil {
-			srcDir = candidate
+	// Git URL: clone to temp dir
+	if isGitURL(nameOrPath) {
+		fmt.Fprintf(w, "  cloning %s...\n", nameOrPath)
+		tmpDir, err := os.MkdirTemp("", "mgtt-provider-*")
+		if err != nil {
+			return fmt.Errorf("create temp dir: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		cloneCmd := exec.Command("git", "clone", "--depth=1", nameOrPath, tmpDir)
+		cloneCmd.Stderr = w
+		if err := cloneCmd.Run(); err != nil {
+			return fmt.Errorf("git clone: %w", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "provider.yaml")); err != nil {
+			return fmt.Errorf("cloned repo has no provider.yaml")
+		}
+		srcDir = tmpDir
+	}
+
+	// Local path
+	if srcDir == "" {
+		if filepath.IsAbs(nameOrPath) || strings.HasPrefix(nameOrPath, ".") || strings.Contains(nameOrPath, string(filepath.Separator)) {
+			if _, err := os.Stat(filepath.Join(nameOrPath, "provider.yaml")); err == nil {
+				srcDir = nameOrPath
+			}
 		}
 	}
 
+	// Name lookup
 	if srcDir == "" {
-		// Look up by name
 		name := nameOrPath
 		if home := os.Getenv("MGTT_HOME"); home != "" {
 			candidate := filepath.Join(home, "providers", name)
@@ -78,7 +99,7 @@ func installProvider(w io.Writer, nameOrPath string) error {
 	}
 
 	if srcDir == "" {
-		return fmt.Errorf("provider directory not found (tried path and name lookup)")
+		return fmt.Errorf("provider %q not found (tried git URL, local path, and name lookup)", nameOrPath)
 	}
 
 	// 2. Load provider.yaml first to get the canonical name.
@@ -154,4 +175,12 @@ func copyDir(src, dst string) error {
 		}
 		return os.WriteFile(target, data, info.Mode())
 	})
+}
+
+// isGitURL returns true if the string looks like a git-cloneable URL.
+func isGitURL(s string) bool {
+	return strings.HasPrefix(s, "https://") ||
+		strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "git@") ||
+		strings.HasPrefix(s, "git://")
 }

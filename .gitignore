@@ -37,3 +37,5 @@ Thumbs.db
 # Provider compiled binaries
 providers/*/bin/
 mgtt-provider-kubernetes
+
+.claude

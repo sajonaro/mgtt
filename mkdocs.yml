@@ -1,0 +1,63 @@
+site_name: MGTT — Model Guided Troubleshooting Tool
+site_url: https://sajonaro.github.io/mgtt
+repo_url: https://github.com/sajonaro/mgtt
+repo_name: sajonaro/mgtt
+docs_dir: site-docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quickstart.md
+    - Install: getting-started/install.md
+  - Concepts:
+    - How It Works: concepts/how-it-works.md
+    - Simulation: concepts/simulation.md
+    - Troubleshooting: concepts/troubleshooting.md
+  - Writing Providers:
+    - Overview: providers/overview.md
+    - Vocabulary: providers/vocabulary.md
+    - Binary Protocol: providers/protocol.md
+    - Install Hooks: providers/hooks.md
+    - Testing: providers/testing.md
+  - Reference:
+    - CLI: reference/cli.md
+    - Specification: reference/spec.md
+    - Provider Registry: reference/registry.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
