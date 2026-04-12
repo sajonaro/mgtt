@@ -1,0 +1,11 @@
+meta:
+  name: test-missing-dep
+  version: "1.0"
+  providers:
+    - kubernetes
+
+components:
+  nginx:
+    type: ingress
+    depends:
+      - on: nonexistent

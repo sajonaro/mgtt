@@ -1,0 +1,19 @@
+meta:
+  name: test-circular
+  version: "1.0"
+  providers:
+    - kubernetes
+
+components:
+  a:
+    type: deployment
+    depends:
+      - on: b
+  b:
+    type: deployment
+    depends:
+      - on: c
+  c:
+    type: deployment
+    depends:
+      - on: a
