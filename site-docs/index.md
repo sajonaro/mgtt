@@ -1,6 +1,14 @@
 # MGTT — Model Guided Troubleshooting Tool
 
-Encode your system's dependencies once. When something breaks, the engine tells you what to check next — eliminating healthy components, narrowing the search, finding root cause in minutes.
+If you build or maintain anything with more than two components — a web app with a frontend, an API, and a database; a set of microservices behind a load balancer; a data pipeline with queues, workers, and storage — you know the drill:
+
+Something stops working. You check the logs. Nothing obvious. You check the database. Looks fine. You check the API. Restarting. Why? You check the config. You check the deploy history. You ask the person who wrote it. They're asleep. You open three terminals and start guessing.
+
+**The core problem:** troubleshooting distributed systems is slow, unstructured, and depends entirely on whoever happens to know the system. There's no map, no systematic narrowing, no way to know what you've already ruled out.
+
+**mgtt fixes this.** You describe your system's dependencies once in a YAML model. When something breaks, a constraint engine walks the dependency graph, probes components in order of information value, and eliminates healthy branches. It always knows what to check next and why.
+
+An SRE can drive the loop manually (press Y at each step). An AI agent can drive it autonomously via the same interface — mgtt is designed to be equally useful to humans and LLMs. The engine reasons; whoever's on call executes.
 
 ## See it in action
 
@@ -20,6 +28,8 @@ $ mgtt simulate --all
 ```
 
 No running system. No credentials. Runs on every PR.
+
+[Full simulation walkthrough](concepts/simulation.md)
 
 ### Troubleshooting: root cause in 6 probes
 
@@ -54,7 +64,9 @@ $ mgtt plan
   Eliminated: frontend, rds
 ```
 
-4 components probed, 2 eliminated, root cause found. You didn't need to know the system — the model knew it for you.
+4 components probed, 2 eliminated, root cause found. You didn't need to know the system — the model knew it for you. An AI agent could run this same loop autonomously.
+
+[Full troubleshooting walkthrough](concepts/troubleshooting.md)
 
 ---
 
@@ -62,7 +74,14 @@ $ mgtt plan
 
 1. **Model once** — describe components, dependencies, and what "healthy" means in YAML
 2. **Simulate in CI** — inject synthetic failures, assert the engine reasons correctly, catch model gaps before production
-3. **Troubleshoot at 3am** — press Y, the engine picks the most informative probe at every step, root cause in minutes
+3. **Troubleshoot at 3am** — press Y (or let an AI agent drive), the engine picks the most informative probe at every step
+
+| | Design time | At 3am |
+|---|---|---|
+| Command | `mgtt simulate` | `mgtt plan` |
+| Facts from | Scenario YAML | Real probes (kubectl, aws) |
+| Driven by | CI pipeline | SRE or AI agent |
+| Output | Pass/fail assertions | Guided root cause |
 
 ## Get started
 

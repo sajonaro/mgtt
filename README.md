@@ -8,6 +8,8 @@ Something stops working. You check the logs. Nothing obvious. You check the data
 
 **mgtt fixes this.** You describe your system's dependencies once in a YAML model — what depends on what, what "healthy" means for each component. When something breaks, a constraint engine walks the dependency graph, probes components in order of information value, and eliminates healthy branches. It always knows what to check next and why.
 
+An SRE can drive the loop manually (press Y at each step). An AI agent can drive it autonomously via the same interface — mgtt is designed to be equally useful to humans and LLMs. The engine reasons; whoever's on call executes.
+
 And before the system even exists, you can simulate failures against the model to verify the reasoning is correct — like unit tests for your architecture.
 
 ## See it in action
@@ -64,7 +66,7 @@ $ mgtt plan
   Eliminated: frontend, rds
 ```
 
-The engine probed 4 components, eliminated 2 (rds healthy, frontend healthy), and found the root cause: api is crash-looping. You didn't need to know the system — the model knew it for you.
+The engine probed 4 components, eliminated 2 (rds healthy, frontend healthy), and found the root cause: api is crash-looping. You didn't need to know the system — the model knew it for you. An AI agent could run this same loop autonomously.
 
 [Full troubleshooting walkthrough](./docs/troubleshooting-scenario.md)
 
