@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"mgtt/internal/probe"
-	"mgtt/internal/probe/fixture"
+	"mgtt/internal/providersupport/probe"
+	"mgtt/internal/providersupport/probe/fixture"
 )
 
 // ---------------------------------------------------------------------------
@@ -457,7 +457,7 @@ func TestValidateCommand_TemplateWithPipeIsOK(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFixture_Load(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestFixture_Load(t *testing.T) {
 }
 
 func TestFixture_RDS_Available(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +496,7 @@ func TestFixture_RDS_Available(t *testing.T) {
 }
 
 func TestFixture_RDS_ConnectionCount(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +514,7 @@ func TestFixture_RDS_ConnectionCount(t *testing.T) {
 }
 
 func TestFixture_Kubernetes_NginxUpstreamCount(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestFixture_Kubernetes_NginxUpstreamCount(t *testing.T) {
 }
 
 func TestFixture_Kubernetes_FrontendEndpoints(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +551,7 @@ func TestFixture_Kubernetes_FrontendEndpoints(t *testing.T) {
 }
 
 func TestFixture_Kubernetes_APIDesiredReplicas(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +569,7 @@ func TestFixture_Kubernetes_APIDesiredReplicas(t *testing.T) {
 }
 
 func TestFixture_NotFound(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +586,7 @@ func TestFixture_NotFound(t *testing.T) {
 }
 
 func TestFixture_ProviderNotFound(t *testing.T) {
-	ex, err := fixture.Load("../../fixtures/storefront-incident.yaml")
+	ex, err := fixture.Load("../../../fixtures/storefront-incident.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
