@@ -1,5 +1,7 @@
 package model
 
+import "mgtt/internal/expr"
+
 // Model is the in-memory representation of a system.model.yaml file after
 // loading and graph construction.
 type Model struct {
@@ -30,7 +32,8 @@ type Component struct {
 // Dependency captures a single depends-on clause with an optional while guard.
 type Dependency struct {
 	On       []string
-	WhileRaw string // raw expression string, compiled in Phase 2
+	WhileRaw string    // raw expression string, compiled in Phase 2
+	While    expr.Node // compiled from WhileRaw; nil means always active
 }
 
 // ValidationResult accumulates errors and warnings from all validation passes.

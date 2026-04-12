@@ -1,6 +1,10 @@
 package provider
 
-import "time"
+import (
+	"time"
+
+	"mgtt/internal/expr"
+)
 
 // Provider is the in-memory representation of a loaded provider definition.
 type Provider struct {
@@ -39,8 +43,9 @@ type Type struct {
 	Name               string
 	Description        string
 	Facts              map[string]*FactSpec
-	HealthyRaw         []string  // raw expression strings
-	States             []StateDef // ordered — declaration order matters!
+	HealthyRaw         []string   // raw expression strings
+	Healthy            []expr.Node // compiled from HealthyRaw
+	States             []StateDef  // ordered — declaration order matters!
 	DefaultActiveState string
 	FailureModes       map[string][]string // state → can_cause
 }
@@ -65,7 +70,8 @@ type ProbeDef struct {
 // StateDef represents a named state with a when-expression.
 type StateDef struct {
 	Name        string
-	WhenRaw     string // raw expression, compiled later
+	WhenRaw     string    // raw expression, compiled later
+	When        expr.Node // compiled from WhenRaw; nil if WhenRaw is empty
 	Description string
 }
 

@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"mgtt/internal/expr"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -229,6 +231,26 @@ func parseType(name string, node *yaml.Node) (*Type, error) {
 	// Parse failure modes.
 	for stateName, fm := range rf.FailureModes {
 		t.FailureModes[stateName] = fm.CanCause
+	}
+
+	// Compile healthy expressions.
+	for _, raw := range t.HealthyRaw {
+		node, err := expr.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("type %s: invalid healthy expression %q: %w", name, raw, err)
+		}
+		t.Healthy = append(t.Healthy, node)
+	}
+
+	// Compile state when-expressions.
+	for i := range t.States {
+		if t.States[i].WhenRaw != "" {
+			when, err := expr.Parse(t.States[i].WhenRaw)
+			if err != nil {
+				return nil, fmt.Errorf("type %s: state %s: invalid when expression %q: %w", name, t.States[i].Name, t.States[i].WhenRaw, err)
+			}
+			t.States[i].When = when
+		}
 	}
 
 	return t, nil

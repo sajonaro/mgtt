@@ -5,6 +5,8 @@ import (
 	"os"
 	"sort"
 
+	"mgtt/internal/expr"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -114,6 +116,13 @@ func Load(path string) (*Model, error) {
 			dep := Dependency{
 				WhileRaw: rd.WhileRaw,
 				On:       normaliseOn(rd.OnRaw),
+			}
+			if dep.WhileRaw != "" {
+				w, err := expr.Parse(dep.WhileRaw)
+				if err != nil {
+					return nil, fmt.Errorf("component %s: invalid while expression %q: %w", name, dep.WhileRaw, err)
+				}
+				dep.While = w
 			}
 			comp.Depends = append(comp.Depends, dep)
 		}

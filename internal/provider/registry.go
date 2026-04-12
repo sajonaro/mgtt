@@ -3,6 +3,8 @@ package provider
 import (
 	"fmt"
 	"strings"
+
+	"mgtt/internal/expr"
 )
 
 // Registry holds all loaded providers and supports type resolution with
@@ -117,13 +119,13 @@ func (r *Registry) FailureModesFor(providerName, typeName, stateName string) ([]
 	return causes, nil
 }
 
-// HealthyConditionsFor returns the raw healthy expressions for a type.
-func (r *Registry) HealthyConditionsFor(providerName, typeName string) ([]string, error) {
+// HealthyConditionsFor returns the compiled healthy expression nodes for a type.
+func (r *Registry) HealthyConditionsFor(providerName, typeName string) ([]expr.Node, error) {
 	t, err := r.resolveTypeInternal(providerName, typeName)
 	if err != nil {
 		return nil, err
 	}
-	return t.HealthyRaw, nil
+	return t.Healthy, nil
 }
 
 // FactsFor returns the facts map for a type.

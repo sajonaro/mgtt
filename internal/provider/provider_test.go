@@ -360,10 +360,13 @@ meta:
   version: 0.1.0
 types:
   ingress:
-    facts: {}
+    facts:
+      upstream_count:
+        type: mgtt.int
+        ttl: 30s
     states:
       live:
-        when: "true"
+        when: "upstream_count > 0"
         description: always live
     default_active_state: live
 `
@@ -489,6 +492,51 @@ func TestRegistry_QueryMethods(t *testing.T) {
 	_, err = reg.ProbeCostFor("kubernetes", "deployment", "nonexistent_fact")
 	if err == nil {
 		t.Error("expected error for nonexistent fact, got nil")
+	}
+}
+
+func TestLoadProvider_CompiledExpressions(t *testing.T) {
+	k8s, err := LoadFromFile("../../providers/kubernetes/provider.yaml")
+	if err != nil {
+		t.Fatalf("LoadFromFile kubernetes: %v", err)
+	}
+
+	deploy, ok := k8s.Types["deployment"]
+	if !ok {
+		t.Fatal("missing type deployment")
+	}
+
+	// Verify deployment.Healthy has 3 compiled nodes (non-nil).
+	if len(deploy.Healthy) != 3 {
+		t.Errorf("deployment.Healthy compiled nodes = %d, want 3", len(deploy.Healthy))
+	}
+	for i, node := range deploy.Healthy {
+		if node == nil {
+			t.Errorf("deployment.Healthy[%d] is nil", i)
+		}
+	}
+
+	// Verify deployment.States[0] is "degraded" and has non-nil When.
+	if len(deploy.States) == 0 {
+		t.Fatal("deployment has no states")
+	}
+	if deploy.States[0].Name != "degraded" {
+		t.Errorf("deployment.States[0].Name = %q, want degraded", deploy.States[0].Name)
+	}
+	if deploy.States[0].When == nil {
+		t.Error("deployment.States[0].When (degraded) is nil, want compiled node")
+	}
+
+	// Verify all states with WhenRaw have compiled When nodes.
+	for _, sd := range deploy.States {
+		if sd.WhenRaw != "" && sd.When == nil {
+			t.Errorf("state %q has WhenRaw %q but When is nil", sd.Name, sd.WhenRaw)
+		}
+	}
+
+	// Verify HealthyRaw is still present (for display).
+	if len(deploy.HealthyRaw) != 3 {
+		t.Errorf("deployment.HealthyRaw = %d, want 3 (raw strings must be kept)", len(deploy.HealthyRaw))
 	}
 }
 
