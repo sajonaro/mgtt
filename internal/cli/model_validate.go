@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"mgtt/internal/model"
+	"mgtt/internal/provider"
 	"mgtt/internal/render"
 
 	"github.com/spf13/cobra"
@@ -29,7 +30,16 @@ var modelValidateCmd = &cobra.Command{
 			return err
 		}
 
-		result := model.Validate(m, nil)
+		// Load embedded providers and build registry for type resolution.
+		reg := provider.NewRegistry()
+		for _, name := range provider.ListEmbedded() {
+			p, err := provider.LoadEmbedded(name)
+			if err == nil {
+				reg.Register(p)
+			}
+		}
+
+		result := model.Validate(m, reg)
 
 		// Build depCounts: map component name → number of direct dependencies.
 		// Use -1 to signal "no deps but has a healthy override".

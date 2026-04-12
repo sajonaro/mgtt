@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"mgtt/internal/provider"
 )
 
 // testdataPath returns the absolute path to the testdata/models directory,
@@ -349,5 +351,80 @@ func TestValidate_MissingType(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected error on svc.type, errors=%v", result.Errors)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestValidate_TypeResolution — load storefront model + providers, expect no errors
+// ---------------------------------------------------------------------------
+
+func TestValidate_TypeResolution(t *testing.T) {
+	m, err := Load(testdataPath("storefront.valid.yaml"))
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	_, file, _, _ := runtime.Caller(0)
+	repoRoot := filepath.Join(filepath.Dir(file), "..", "..")
+
+	reg := provider.NewRegistry()
+	for _, name := range []string{"kubernetes", "aws"} {
+		p, err := provider.LoadFromFile(filepath.Join(repoRoot, "providers", name, "provider.yaml"))
+		if err != nil {
+			t.Fatalf("LoadFromFile(%s): %v", name, err)
+		}
+		reg.Register(p)
+	}
+
+	result := Validate(m, reg)
+	if result.HasErrors() {
+		for _, e := range result.Errors {
+			t.Errorf("unexpected error: component=%q field=%q msg=%q", e.Component, e.Field, e.Message)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestValidate_UnknownType — type that doesn't exist in any provider
+// ---------------------------------------------------------------------------
+
+func TestValidate_UnknownType(t *testing.T) {
+	m := &Model{
+		Meta: Meta{
+			Name:      "test",
+			Version:   "1.0",
+			Providers: []string{"kubernetes"},
+		},
+		Components: map[string]*Component{
+			"svc": {Name: "svc", Type: "nonexistent_type"},
+		},
+		Order: []string{"svc"},
+	}
+	m.BuildGraph()
+
+	_, file, _, _ := runtime.Caller(0)
+	repoRoot := filepath.Join(filepath.Dir(file), "..", "..")
+
+	reg := provider.NewRegistry()
+	p, err := provider.LoadFromFile(filepath.Join(repoRoot, "providers", "kubernetes", "provider.yaml"))
+	if err != nil {
+		t.Fatalf("LoadFromFile(kubernetes): %v", err)
+	}
+	reg.Register(p)
+
+	result := Validate(m, reg)
+	if !result.HasErrors() {
+		t.Fatal("expected type resolution error for unknown type, got none")
+	}
+
+	found := false
+	for _, e := range result.Errors {
+		if e.Component == "svc" && e.Field == "type" {
+			found = true
+			t.Logf("found expected error: %q", e.Message)
+		}
+	}
+	if !found {
+		t.Errorf("expected error on svc.type (unknown type), errors=%v", result.Errors)
 	}
 }

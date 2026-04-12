@@ -3,19 +3,50 @@ package model
 import (
 	"fmt"
 	"strings"
+
+	"mgtt/internal/provider"
 )
 
 // Validate runs all validation passes against the loaded model and returns a
-// ValidationResult.  The providers parameter is reserved for Phase 2
-// (provider.Registry); pass nil in Phase 1.
-func Validate(m *Model, providers interface{}) *ValidationResult {
+// ValidationResult. When reg is non-nil, pass 2 resolves component types
+// against the provider registry.
+func Validate(m *Model, reg *provider.Registry) *ValidationResult {
 	result := &ValidationResult{}
 
 	pass1Structural(m, result)
+	if reg != nil {
+		pass2TypeResolution(m, reg, result)
+	}
 	pass3DepRefs(m, result)
 	pass4Cycles(m, result)
 
 	return result
+}
+
+// ---------------------------------------------------------------------------
+// Pass 2 — Type resolution
+// ---------------------------------------------------------------------------
+
+func pass2TypeResolution(m *Model, reg *provider.Registry, result *ValidationResult) {
+	for _, name := range m.Order {
+		comp := m.Components[name]
+		if comp.Type == "" {
+			// pass1 already reported this; skip
+			continue
+		}
+		// Determine which providers to resolve against: component-level or meta-level.
+		providers := comp.Providers
+		if len(providers) == 0 {
+			providers = m.Meta.Providers
+		}
+		if _, _, err := reg.ResolveType(providers, comp.Type); err != nil {
+			result.Errors = append(result.Errors, ValidationError{
+				Component: name,
+				Field:     "type",
+				Message:   fmt.Sprintf("type %s could not be resolved", comp.Type),
+			})
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
