@@ -579,9 +579,30 @@ MGTT warns loudly before proceeding.
 
 ## 8. Provider Format
 
-A provider is a directory containing at minimum a `provider.yaml` file.
+A provider is a self-contained directory with two parts:
 
-### 8.1 Top-Level Structure
+1. **`provider.yaml`** — the vocabulary: types, facts, states, failure modes,
+   healthy conditions. Written in mgtt's language. This is what the constraint
+   engine reads to reason about the system. It never touches the real system.
+
+2. **A provider binary** — the behavior: how to actually probe components,
+   authenticate, parse responses. This is what runs at probe time. It speaks
+   a simple protocol (args in, JSON out) and can be written in any language.
+
+The Helm plugin model is the reference architecture. `provider.yaml` is the
+manifest. The binary is the command. Install hooks handle compilation.
+
+```
+providers/kubernetes/
+├── provider.yaml                    vocabulary for the engine
+├── hooks/
+│   └── install.sh                   compiles or downloads the binary
+├── go.mod, *.go                     source code (Go, or any language)
+└── bin/
+    └── mgtt-provider-kubernetes     the compiled provider binary
+```
+
+### 8.1 Top-Level Structure — provider.yaml
 
 ```yaml
 meta:
@@ -590,6 +611,11 @@ meta:
   description: Kubernetes workload and networking components
   requires:
     mgtt: ">=1.0"
+  command:     "$MGTT_PROVIDER_DIR/bin/mgtt-provider-kubernetes"
+
+hooks:
+  install:     hooks/install.sh
+  update:      hooks/install.sh
 
 data_types:
   <name>:
@@ -616,6 +642,58 @@ types:
 | version     | yes      | semver                                         |
 | description | yes      | one line                                       |
 | requires    | yes      | `mgtt: "<version_constraint>"`                 |
+| command     | no       | path to provider binary; `$MGTT_PROVIDER_DIR` is substituted |
+
+### 8.2.1 The `hooks` Block
+
+| field   | required | description                                            |
+|---------|----------|--------------------------------------------------------|
+| install | no       | script to run during `mgtt provider install`           |
+| update  | no       | script to run during `mgtt provider update`            |
+| delete  | no       | cleanup script for `mgtt provider uninstall`           |
+
+Install hooks run with these environment variables:
+
+| variable            | value                                         |
+|---------------------|-----------------------------------------------|
+| `MGTT_PROVIDER_DIR` | absolute path to the provider's install directory |
+| `MGTT_PROVIDER_NAME`| provider name                                 |
+| `MGTT_BIN`          | path to the mgtt binary                       |
+
+### 8.2.2 The Provider Binary Protocol
+
+The provider binary is a black box. mgtt calls it with args, it returns JSON
+on stdout. Any language, any implementation. The protocol has three commands:
+
+**probe** — the primary operation:
+```bash
+mgtt-provider-kubernetes probe <component> <fact> \
+  --namespace <ns> --type <type>
+
+# stdout:
+{"value": 0, "raw": "0"}
+```
+
+**validate** — check auth and connectivity:
+```bash
+mgtt-provider-kubernetes validate \
+  --namespace <ns>
+
+# stdout:
+{"ok": true, "auth": "kubectl context (eks-prod)", "access": "read-only"}
+```
+
+**describe** — self-declare capabilities (optional, supplements provider.yaml):
+```bash
+mgtt-provider-kubernetes describe
+
+# stdout: JSON matching the types block of provider.yaml
+```
+
+Exit code 0 means success. Non-zero means error; stderr contains the message.
+
+mgtt passes model variables as `--<key> <value>` args. The provider binary
+receives the same variables declared in `provider.yaml`'s `variables` block.
 
 ### 8.3 The `data_types` Block
 
@@ -634,15 +712,24 @@ Provider-defined types built on stdlib primitives.
 |---------|----------|-------------------------------------------------------|
 | type    | yes      | provider-defined or `mgtt.<primitive>`                |
 | ttl     | yes      | duration after which fact is stale                    |
-| probe   | yes      | probe definition (see 8.5)                            |
+| probe   | no       | probe metadata (see 8.5) — informational when binary handles probing |
 | default | no       | suggested threshold for use in healthy conditions     |
 
-### 8.5 Probe Definition
+When the provider has a binary (`meta.command`), the binary handles all
+probing. The `probe` block in facts becomes metadata for the engine (cost,
+access description) rather than an executable command. The binary receives
+the component name and fact name as args and decides how to collect the data.
+
+When the provider has no binary, the `probe.cmd` template is executed
+directly by mgtt as a shell command (the simple/fallback path for providers
+that don't need complex logic).
+
+### 8.5 Probe Metadata
 
 | field   | required | description                                           |
 |---------|----------|-------------------------------------------------------|
-| cmd     | yes      | command template with `{variable}` substitution       |
-| parse   | yes      | how to interpret raw output (see 8.5.1)               |
+| cmd     | no       | command template — used when no provider binary exists |
+| parse   | no       | how to interpret raw output (used with cmd fallback)  |
 | unit    | no       | unit to attach to parsed numeric value                |
 | timeout | no       | max execution time, default 30s                       |
 | cost    | no       | `low` \| `medium` \| `high`, default `low`            |
@@ -871,9 +958,11 @@ variables:
 
 ## 10. Provider Authoring Toolchain
 
+### 10.1 CLI for Authors
+
 ```bash
-mgtt provider init <name>        # scaffold provider.yaml from template
-mgtt provider validate           # check against spec contract
+mgtt provider init <name>        # scaffold provider directory from template
+mgtt provider validate           # check provider.yaml + binary against spec
 mgtt provider test --readonly    # run probes in sandboxed read-only mode
 mgtt provider publish            # submit to community registry
 
@@ -881,44 +970,79 @@ mgtt stdlib ls                   # list all stdlib types
 mgtt stdlib inspect <type>       # full definition of a stdlib type
 ```
 
-### 10.1 Provider Test Sandbox
+`mgtt provider init <name>` scaffolds the full provider directory:
+
+```
+<name>/
+├── provider.yaml                template with all fields documented
+├── hooks/
+│   └── install.sh               compiles the binary
+├── go.mod                       Go module (for Go providers)
+├── main.go                      skeleton implementing the protocol
+└── README.md                    authoring guide
+```
+
+### 10.2 Writing a Provider — The Three Things You Provide
+
+**1. The vocabulary (provider.yaml):**
+Fill in mgtt's schema with your technology's specifics. The schema is mgtt's
+language — `types`, `facts`, `states`, `healthy`, `failure_modes` — you
+supply the values.
+
+**2. The binary:**
+Implement the three-command protocol (§8.2.2): `probe`, `validate`, `describe`.
+You can use any language. For Go providers, mgtt publishes a convenience SDK
+(`mgtt/sdk`) with arg parsing and JSON serialization, but it is not required.
+
+**3. The install hook:**
+A script that produces the binary. For Go providers: `go build`. For Python:
+set up venv + pip install. For pre-compiled: curl the right platform binary.
+
+### 10.3 Provider Test Sandbox
 
 `mgtt provider test --readonly`:
 
-- executes only probe commands declared in the provider
+- calls the provider binary's `validate` command
+- runs `probe` for each declared fact against a live system
 - refuses any probe that writes, deletes, or modifies state
-- requires explicit user permission before connecting to any live system
+- requires explicit user permission before connecting
 - logs all executions for audit
 
 Probes that fail the read-only sandbox are rejected from the community registry.
 
-### 10.2 Provider Validation Rules
+### 10.4 Provider Validation Rules
 
 ```
 meta:         name lowercase+hyphen · version semver · requires.mgtt valid
+              command path resolves · hooks.install exists if declared
 data_types:   base is mgtt stdlib · default satisfies unit and range
 types:        at least one declared
 facts:        types resolve · healthy refs declared facts
 states:       when: refs declared facts only · default_active_state declared
 failure_modes: keys are declared state names · default_active_state excluded
-probes:       cmd uses only declared variables · no write operations
-              parse mode valid · cost is low|medium|high
+binary:       responds to 'validate' · responds to 'probe' for each declared fact
 ```
 
-### 10.3 Reference Runner
+### 10.5 The Kubernetes Provider as Reference
 
-The kubernetes provider ships a reference runner — a shell script that
-implements the runner delegation interface. Provider authors use it as a
-starting point for their own runners.
+The kubernetes provider is the reference implementation for provider authors.
+It demonstrates the full lifecycle: vocabulary declaration, Go binary
+implementing the protocol, install hook, and test coverage.
 
-```bash
-# runner interface — two commands
-mgtt probe next --format json    # get next probe to execute
-mgtt fact add <c> <k> <v>        # report result back to mgtt
+```
+providers/kubernetes/
+├── provider.yaml                 types: ingress, deployment
+├── hooks/install.sh              go build -o bin/mgtt-provider-kubernetes .
+├── go.mod                        imports only stdlib + encoding/json + os/exec
+├── main.go                       probe/validate/describe handlers
+├── deployment.go                 deployment probing via kubectl JSON
+├── ingress.go                    ingress probing via kubectl JSON
+└── bin/
+    └── mgtt-provider-kubernetes  compiled binary
 ```
 
-The reference runner wraps kubectl, handles kubeconfig context, and
-calls these two commands. It is the proof that the interface works.
+Provider authors study this provider's source and adapt the pattern for
+their technology.
 
 ---
 
@@ -973,25 +1097,33 @@ auth:
 
 ### 11.3 Probe Execution Modes
 
-Both modes implement the same contract: given a probe command and a parse
-mode, execute the command and return the raw output. The constraint engine
-and CLI never know which mode is active — they receive a parsed fact either
-way. This single interface is what allows simulation (injected facts, no
-probes), fixture-based testing (canned output, no credentials), direct
-execution, and runner delegation to all feed the same engine without
-branching.
+All modes feed the same engine — it receives a typed fact value either way.
+The constraint engine and CLI never know which mode produced a fact. This
+single contract is what allows simulation, fixture testing, shell commands,
+and provider binaries to coexist.
 
-**Direct execution (default)** — MGTT runs probe commands in the local
-environment. Works wherever the engineer already has credentials configured.
+**Provider binary (primary)** — mgtt calls the provider's binary via the
+protocol defined in §8.2.2. The binary handles authentication, connection,
+parsing, and type conversion internally. This is the normal production path
+for any provider that has a compiled binary.
 
-**Runner delegation** — MGTT delegates to a runner process that runs where
-the systems are. The runner executes probes and reports facts back via
-`mgtt fact add`. Used for CI/CD pipelines, restricted environments, and
-AI autonomous mode in production.
+**Shell fallback** — for providers without a binary (or when prototyping),
+mgtt executes the `probe.cmd` template from provider.yaml directly in the
+local shell environment. Works wherever the engineer has credentials
+configured. Simpler but fragile — no type safety, no error recovery.
+
+**Fixture mode** — for testing. `$MGTT_FIXTURES` points to a YAML file with
+canned probe outputs. No credentials, no binary, no shell. The parse
+pipeline still runs so parse bugs surface in test and production identically.
+
+**Simulation** — fact values injected directly from scenario YAML. No probes
+run at all. Tests the engine's reasoning, not the system.
 
 ```
-direct execution    →   local incident response, engineer's laptop
-runner delegation   →   CI/CD, bastion hosts, AI autonomous, multi-team
+provider binary     →   production probing, proper types, auth handled
+shell fallback      →   prototyping, simple providers, no binary needed
+fixture mode        →   deterministic testing, golden files
+simulation          →   design-time model validation, CI
 ```
 
 ### 11.4 What MGTT Never Does
