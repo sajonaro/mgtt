@@ -1,0 +1,23 @@
+meta:
+  name: kubernetes
+  version: 2.0.0
+  description: Kubernetes cluster resources — workloads, networking, storage, RBAC, webhooks, and scheduling
+  requires:
+    mgtt: ">=1.0"
+  command: "$MGTT_PROVIDER_DIR/bin/mgtt-provider-kubernetes"
+
+hooks:
+  install: hooks/install.sh
+
+variables:
+  namespace:
+    description: kubernetes namespace
+    required: false
+    default: default
+
+auth:
+  strategy: environment
+  reads_from: [KUBECONFIG, ~/.kube/config, in-cluster service account]
+  access:
+    probes: kubectl read-only
+    writes: none

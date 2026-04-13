@@ -607,6 +607,69 @@ func TestLoadFromDir_MultiFile(t *testing.T) {
 	}
 }
 
+func TestLoadFromDir_KubernetesProvider(t *testing.T) {
+	p, err := LoadFromDir("../../providers/kubernetes")
+	if err != nil {
+		t.Fatalf("LoadFromDir kubernetes: %v", err)
+	}
+
+	if p.Meta.Name != "kubernetes" {
+		t.Errorf("Meta.Name = %q, want kubernetes", p.Meta.Name)
+	}
+	if p.Meta.Version != "2.0.0" {
+		t.Errorf("Meta.Version = %q, want 2.0.0", p.Meta.Version)
+	}
+	if p.Variables["namespace"].Default != "default" {
+		t.Errorf("namespace default = %q, want default", p.Variables["namespace"].Default)
+	}
+}
+
+func TestKubernetesProvider_WorkloadTypes(t *testing.T) {
+	p, err := LoadFromDir("../../providers/kubernetes")
+	if err != nil {
+		t.Fatalf("LoadFromDir: %v", err)
+	}
+
+	workloads := map[string]struct {
+		wantFacts  int
+		wantStates int
+		defaultSt  string
+	}{
+		"deployment":  {wantFacts: 8, wantStates: 6, defaultSt: "live"},
+		"statefulset": {wantFacts: 7, wantStates: 6, defaultSt: "live"},
+		"daemonset":   {wantFacts: 6, wantStates: 4, defaultSt: "live"},
+		"replicaset":  {wantFacts: 3, wantStates: 3, defaultSt: "live"},
+	}
+
+	for typeName, want := range workloads {
+		t.Run(typeName, func(t *testing.T) {
+			typ, ok := p.Types[typeName]
+			if !ok {
+				t.Fatalf("missing type %s", typeName)
+			}
+			if len(typ.Facts) != want.wantFacts {
+				t.Errorf("facts count = %d, want %d", len(typ.Facts), want.wantFacts)
+			}
+			if len(typ.States) != want.wantStates {
+				t.Errorf("states count = %d, want %d", len(typ.States), want.wantStates)
+			}
+			if typ.DefaultActiveState != want.defaultSt {
+				t.Errorf("default_active_state = %q, want %q", typ.DefaultActiveState, want.defaultSt)
+			}
+			for _, h := range typ.Healthy {
+				if h == nil {
+					t.Error("nil healthy expression")
+				}
+			}
+			for _, s := range typ.States {
+				if s.WhenRaw != "" && s.When == nil {
+					t.Errorf("state %q: When not compiled", s.Name)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadFromDir_FallsBackToInlineTypes(t *testing.T) {
 	dir := t.TempDir()
 	data, err := os.ReadFile("testdata/kubernetes.yaml")
