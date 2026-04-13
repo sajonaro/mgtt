@@ -228,12 +228,15 @@ mgtt provider install https://github.com/sajonaro/mgtt-provider-docker
 
 ## More
 
+- [Documentation site](https://sajonaro.github.io/mgtt) — browsable docs with full walkthroughs and reference
+- [Model schema reference](https://sajonaro.github.io/mgtt/reference/model-schema/) — every field in `system.model.yaml`
+- [Scenario schema reference](https://sajonaro.github.io/mgtt/reference/scenario-schema/) — every field in scenario files
+- [Type catalog](https://sajonaro.github.io/mgtt/reference/type-catalog/) — all provider types, facts, states, and failure modes
 - [Simulation walkthrough](./docs/simulation-scenario.md) — design-time model validation
 - [Troubleshooting walkthrough](./docs/troubleshooting-scenario.md) — runtime incident response
 - [Writing providers](./providers/README.md) — teach mgtt about your technology
 - [CLI reference](#cli-reference) — every command
 - [Full specification](./docs/specs.md) — the v1.0 spec
-- [Documentation site](https://sajonaro.github.io/mgtt) — browsable docs
 
 ## CLI reference
 

@@ -85,11 +85,24 @@ $ mgtt plan
 
 ## Get started
 
-- [Install](getting-started/install.md)
-- [Quick Start](getting-started/quickstart.md) — model, validate, simulate in 5 minutes
+- [Quick Start](getting-started/quickstart.md) — complete end-to-end example: model, scenarios, simulate
+- [Install](getting-started/install.md) — one-liner, Go, Docker, from source
+
+## Learn
+
+- [How It Works](concepts/how-it-works.md) — the constraint engine and dependency graph
 - [Simulation walkthrough](concepts/simulation.md) — design-time model validation
 - [Troubleshooting walkthrough](concepts/troubleshooting.md) — runtime incident response
-- [Writing Providers](providers/overview.md) — teach mgtt about your technology
+
+## Reference
+
+- [Model Schema](reference/model-schema.md) — every field in `system.model.yaml`
+- [Scenario Schema](reference/scenario-schema.md) — every field in scenario files
+- [Type Catalog](reference/type-catalog.md) — all provider types, facts, states, and failure modes
 - [CLI Reference](reference/cli.md) — every command
-- [Provider Registry](reference/registry.md) — community providers
+- [Provider Registry](reference/registry.md) — official and community providers
 - [Full Specification](reference/spec.md) — the v1.0 spec
+
+## Extend
+
+- [Writing Providers](providers/overview.md) — teach mgtt about your technology

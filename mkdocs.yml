@@ -42,6 +42,9 @@ nav:
     - Testing: providers/testing.md
   - Reference:
     - CLI: reference/cli.md
+    - Model Schema: reference/model-schema.md
+    - Scenario Schema: reference/scenario-schema.md
+    - Type Catalog: reference/type-catalog.md
     - Specification: reference/spec.md
     - Provider Registry: reference/registry.md
 
