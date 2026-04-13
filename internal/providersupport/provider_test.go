@@ -1,6 +1,7 @@
 package providersupport
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -556,4 +557,75 @@ func TestRegistry_GetAndAll(t *testing.T) {
 		t.Errorf("All() count = %d, want 2", len(all))
 	}
 	_ = aws
+}
+
+func TestLoadFromDir_MultiFile(t *testing.T) {
+	p, err := LoadFromDir("testdata/multifile")
+	if err != nil {
+		t.Fatalf("LoadFromDir: %v", err)
+	}
+
+	if p.Meta.Name != "multitest" {
+		t.Errorf("Meta.Name = %q, want multitest", p.Meta.Name)
+	}
+
+	if p.Variables["namespace"].Default != "default" {
+		t.Errorf("namespace default = %q, want default", p.Variables["namespace"].Default)
+	}
+
+	mt, ok := p.Types["mytype"]
+	if !ok {
+		t.Fatal("missing type mytype")
+	}
+
+	if _, ok := mt.Facts["ready"]; !ok {
+		t.Error("mytype missing fact ready")
+	}
+
+	if mt.DefaultActiveState != "live" {
+		t.Errorf("DefaultActiveState = %q, want live", mt.DefaultActiveState)
+	}
+
+	if len(mt.States) != 2 {
+		t.Fatalf("states count = %d, want 2", len(mt.States))
+	}
+	if mt.States[0].Name != "missing" {
+		t.Errorf("States[0].Name = %q, want missing", mt.States[0].Name)
+	}
+
+	// Verify expressions are compiled.
+	if len(mt.Healthy) != 1 || mt.Healthy[0] == nil {
+		t.Error("healthy expression not compiled")
+	}
+	if mt.States[0].When == nil {
+		t.Error("state missing.When not compiled")
+	}
+
+	causes := mt.FailureModes["missing"]
+	if len(causes) != 1 || causes[0] != "upstream_failure" {
+		t.Errorf("FailureModes[missing] = %v, want [upstream_failure]", causes)
+	}
+}
+
+func TestLoadFromDir_FallsBackToInlineTypes(t *testing.T) {
+	dir := t.TempDir()
+	data, err := os.ReadFile("testdata/kubernetes.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/provider.yaml", data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := LoadFromDir(dir)
+	if err != nil {
+		t.Fatalf("LoadFromDir with inline types: %v", err)
+	}
+
+	if p.Meta.Name != "kubernetes" {
+		t.Errorf("Meta.Name = %q, want kubernetes", p.Meta.Name)
+	}
+	if _, ok := p.Types["deployment"]; !ok {
+		t.Fatal("missing type deployment — inline types not loaded")
+	}
 }

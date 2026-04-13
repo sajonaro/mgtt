@@ -1,0 +1,17 @@
+meta:
+  name: multitest
+  version: 0.1.0
+  description: test provider using multi-file types
+
+variables:
+  namespace:
+    description: kubernetes namespace
+    required: false
+    default: default
+
+auth:
+  strategy: environment
+  reads_from: [KUBECONFIG]
+  access:
+    probes: kubectl read-only
+    writes: none

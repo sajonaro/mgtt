@@ -3,6 +3,8 @@ package providersupport
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mgt-tool/mgtt/internal/expr"
@@ -166,6 +168,71 @@ func LoadFromFile(path string) (*Provider, error) {
 		return nil, fmt.Errorf("read provider file %q: %w", path, err)
 	}
 	return LoadFromBytes(data)
+}
+
+// LoadFromDir loads a provider from a directory. It reads provider.yaml for
+// meta/auth/variables/hooks. If provider.yaml contains an inline types: key,
+// those are loaded (backward-compatible). Otherwise, it scans a types/
+// subdirectory and loads each .yaml file as a named type.
+func LoadFromDir(dir string) (*Provider, error) {
+	providerPath := filepath.Join(dir, "provider.yaml")
+	data, err := os.ReadFile(providerPath)
+	if err != nil {
+		return nil, fmt.Errorf("read provider.yaml in %q: %w", dir, err)
+	}
+
+	p, err := LoadFromBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse provider.yaml in %q: %w", dir, err)
+	}
+
+	// If inline types were loaded, we're done (backward-compatible).
+	if len(p.Types) > 0 {
+		return p, nil
+	}
+
+	// Scan types/ subdirectory.
+	typesDir := filepath.Join(dir, "types")
+	entries, err := os.ReadDir(typesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No types: key and no types/ dir — valid provider with zero types.
+			return p, nil
+		}
+		return nil, fmt.Errorf("read types dir %q: %w", typesDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
+			continue
+		}
+		typeName := strings.TrimSuffix(entry.Name(), ".yaml")
+		typeData, err := os.ReadFile(filepath.Join(typesDir, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("read type file %q: %w", entry.Name(), err)
+		}
+
+		var typeNode yaml.Node
+		if err := yaml.Unmarshal(typeData, &typeNode); err != nil {
+			return nil, fmt.Errorf("type %q: YAML parse error: %w", typeName, err)
+		}
+
+		root := &typeNode
+		if root.Kind == yaml.DocumentNode {
+			if len(root.Content) == 0 {
+				return nil, fmt.Errorf("type %q: YAML document is empty", typeName)
+			}
+			root = root.Content[0]
+		}
+
+		t, err := parseType(typeName, root)
+		if err != nil {
+			return nil, fmt.Errorf("type %q: %w", typeName, err)
+		}
+		p.Types[typeName] = t
+	}
+
+	return p, nil
 }
 
 // ---------------------------------------------------------------------------
