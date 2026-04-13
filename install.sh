@@ -40,4 +40,12 @@ fi
 
 echo "Building mgtt from source..."
 go install "github.com/${REPO}/cmd/mgtt@latest"
-echo "Installed mgtt to $(go env GOPATH)/bin/mgtt"
+
+GOBIN="$(go env GOPATH)/bin/mgtt"
+if [ -f "$GOBIN" ]; then
+  sudo mv "$GOBIN" "$INSTALL_DIR/mgtt" 2>/dev/null || mv "$GOBIN" "$INSTALL_DIR/mgtt"
+  echo "Installed mgtt to ${INSTALL_DIR}/mgtt"
+else
+  echo "Installed mgtt to $(go env GOPATH)/bin/mgtt"
+  echo "Note: make sure $(go env GOPATH)/bin is on your PATH"
+fi
