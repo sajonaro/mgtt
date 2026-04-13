@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
 	"github.com/mgt-tool/mgtt/internal/providersupport/probe/fixture"
@@ -329,6 +330,43 @@ func TestParseOutput_JSON_MissingKey(t *testing.T) {
 	_, err := probe.ParseOutput("json:.missing", `{"status": "ok"}`, 0)
 	if err == nil {
 		t.Fatal("expected error for missing JSON key")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ParseOutput — age_seconds
+// ---------------------------------------------------------------------------
+
+func TestParseOutput_AgeSeconds(t *testing.T) {
+	// Use a timestamp 120 seconds in the past.
+	ts := time.Now().Add(-120 * time.Second).UTC().Format(time.RFC3339)
+	v, err := probe.ParseOutput("age_seconds", ts+"\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	age, ok := v.(int)
+	if !ok {
+		t.Fatalf("expected int, got %T", v)
+	}
+	// Allow 5 seconds of clock skew.
+	if age < 115 || age > 125 {
+		t.Fatalf("expected age ~120, got %d", age)
+	}
+}
+
+func TestParseOutput_AgeSeconds_Empty(t *testing.T) {
+	// Empty timestamp (field not set) should return 0.
+	v, err := probe.ParseOutput("age_seconds", "\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEqual(t, v, 0)
+}
+
+func TestParseOutput_AgeSeconds_InvalidFormat(t *testing.T) {
+	_, err := probe.ParseOutput("age_seconds", "not-a-timestamp\n", 0)
+	if err == nil {
+		t.Fatal("expected error for invalid timestamp")
 	}
 }
 

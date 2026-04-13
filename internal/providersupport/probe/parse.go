@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ParseOutput converts raw command output into a typed value according to the
@@ -67,6 +68,17 @@ func ParseOutput(mode string, stdout string, exitCode int) (any, error) {
 	case strings.HasPrefix(mode, "regex:"):
 		pattern := strings.TrimPrefix(mode, "regex:")
 		return parseRegex(pattern, stdout)
+
+	case mode == "age_seconds":
+		s := strings.TrimSpace(stdout)
+		if s == "" {
+			return 0, nil
+		}
+		ts, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return nil, fmt.Errorf("parse age_seconds: %w", err)
+		}
+		return int(time.Since(ts).Seconds()), nil
 
 	default:
 		return nil, fmt.Errorf("unknown parse mode %q", mode)
