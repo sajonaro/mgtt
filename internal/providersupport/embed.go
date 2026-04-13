@@ -6,48 +6,57 @@ import (
 	"path/filepath"
 )
 
-// LoadEmbedded loads a provider by name. It checks $MGTT_HOME/providers/<name>/
-// first, then falls back to a local providers/<name>/ directory relative to CWD.
-func LoadEmbedded(name string) (*Provider, error) {
-	// Check $MGTT_HOME override first.
+// SearchDirs returns the provider search directories in priority order:
+//  1. $MGTT_HOME/providers/
+//  2. ~/.mgtt/providers/
+//  3. ./providers/
+func SearchDirs() []string {
+	var dirs []string
 	if home := os.Getenv("MGTT_HOME"); home != "" {
-		path := filepath.Join(home, "providers", name, "provider.yaml")
-		if data, err := os.ReadFile(path); err == nil {
-			return LoadFromBytes(data)
-		}
+		dirs = append(dirs, filepath.Join(home, "providers"))
 	}
-
-	// Fall back to local providers directory (relative to CWD).
-	path := filepath.Join("providers", name, "provider.yaml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("provider %q not found", name)
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(homeDir, ".mgtt", "providers"))
 	}
-	return LoadFromBytes(data)
+	dirs = append(dirs, "providers")
+	return dirs
 }
 
-// ListEmbedded returns the names of all providers available in $MGTT_HOME or
-// the local providers/ directory.
+// ProviderDir returns the directory for a named provider, or "" if not found.
+func ProviderDir(name string) string {
+	for _, dir := range SearchDirs() {
+		candidate := filepath.Join(dir, name)
+		if _, err := os.Stat(filepath.Join(candidate, "provider.yaml")); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// LoadEmbedded loads a provider by name from the search path.
+func LoadEmbedded(name string) (*Provider, error) {
+	dir := ProviderDir(name)
+	if dir == "" {
+		return nil, fmt.Errorf("provider %q not found", name)
+	}
+	return LoadFromFile(filepath.Join(dir, "provider.yaml"))
+}
+
+// ListEmbedded returns the names of all providers found across all search paths.
 func ListEmbedded() []string {
+	seen := map[string]bool{}
 	var names []string
-
-	searchDir := ""
-	if home := os.Getenv("MGTT_HOME"); home != "" {
-		searchDir = filepath.Join(home, "providers")
-	}
-	if searchDir == "" {
-		searchDir = "providers"
-	}
-
-	entries, err := os.ReadDir(searchDir)
-	if err != nil {
-		return nil
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			yamlPath := filepath.Join(searchDir, e.Name(), "provider.yaml")
-			if _, err := os.Stat(yamlPath); err == nil {
-				names = append(names, e.Name())
+	for _, dir := range SearchDirs() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() && !seen[e.Name()] {
+				if _, err := os.Stat(filepath.Join(dir, e.Name(), "provider.yaml")); err == nil {
+					seen[e.Name()] = true
+					names = append(names, e.Name())
+				}
 			}
 		}
 	}

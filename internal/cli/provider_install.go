@@ -88,20 +88,10 @@ func installProvider(w io.Writer, nameOrPath string) error {
 		}
 	}
 
-	// Name lookup (local)
+	// Name lookup (local search path)
 	if srcDir == "" {
-		name := nameOrPath
-		if home := os.Getenv("MGTT_HOME"); home != "" {
-			candidate := filepath.Join(home, "providers", name)
-			if _, err := os.Stat(filepath.Join(candidate, "provider.yaml")); err == nil {
-				srcDir = candidate
-			}
-		}
-		if srcDir == "" {
-			candidate := filepath.Join("providers", name)
-			if _, err := os.Stat(filepath.Join(candidate, "provider.yaml")); err == nil {
-				srcDir = candidate
-			}
+		if dir := providersupport.ProviderDir(nameOrPath); dir != "" {
+			srcDir = dir
 		}
 	}
 

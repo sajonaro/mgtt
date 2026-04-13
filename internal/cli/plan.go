@@ -149,28 +149,13 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		var result probe.Result
 		comp := m.Components[s.Component]
 
-		// Use the external runner if this component's provider declares one.
-		if comp != nil {
-			if runner, ok := runners[s.Provider]; ok {
-				vars := map[string]string{
-					"namespace": m.Meta.Vars["namespace"],
-					"type":      comp.Type,
-				}
-				result, err = runner.Probe(context.Background(), s.Component, s.Fact, vars)
-			} else {
-				rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
-				if err := probe.ValidateCommand(rendered, s.Command); err != nil {
-					fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
-					break
-				}
-				result, err = executor.Run(context.Background(), probe.Command{
-					Raw:       rendered,
-					Parse:     s.ParseMode,
-					Provider:  s.Provider,
-					Component: s.Component,
-					Fact:      s.Fact,
-				})
+		// Use the external runner if available for this provider.
+		if runner, ok := runners[s.Provider]; ok && comp != nil {
+			vars := map[string]string{
+				"namespace": m.Meta.Vars["namespace"],
+				"type":      comp.Type,
 			}
+			result, err = runner.Probe(context.Background(), s.Component, s.Fact, vars)
 		} else {
 			rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
 			if err := probe.ValidateCommand(rendered, s.Command); err != nil {
@@ -217,17 +202,13 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveCommand substitutes $MGTT_PROVIDER_DIR in a command string with the
-// actual provider directory path.
+// resolveCommand substitutes $MGTT_PROVIDER_DIR in a command string.
 func resolveCommand(command, providerName string) string {
-	providerDir := ""
-	if home := os.Getenv("MGTT_HOME"); home != "" {
-		providerDir = filepath.Join(home, "providers", providerName)
+	dir := providersupport.ProviderDir(providerName)
+	if dir == "" {
+		dir = filepath.Join("providers", providerName)
 	}
-	if providerDir == "" {
-		providerDir = filepath.Join("providers", providerName)
-	}
-	return strings.ReplaceAll(command, "$MGTT_PROVIDER_DIR", providerDir)
+	return strings.ReplaceAll(command, "$MGTT_PROVIDER_DIR", dir)
 }
 
 // resolveDefaultActiveForCLI looks up the default_active_state for a component.
