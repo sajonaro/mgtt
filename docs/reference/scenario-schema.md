@@ -96,6 +96,11 @@ expect:
   eliminated: [nginx, frontend, api, rds]
 ```
 
+!!! note "How `eliminated` works"
+    **Order doesn't matter.** The `eliminated` comparison is order-insensitive — `[frontend, rds]` and `[rds, frontend]` are equivalent. Write them in whatever order makes sense to you.
+
+    **Only traversed components appear.** The engine only reports components on branches it actually explored. If your model has a component that isn't reachable from the failure path (e.g., a cron job with no dependency relationship to the affected components), it won't appear in `eliminated` even if it's healthy. Only components the engine investigated and confirmed healthy are listed.
+
 ---
 
 ## File location
