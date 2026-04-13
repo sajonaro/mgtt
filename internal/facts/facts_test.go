@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/facts"
 )
 
 func TestAppendAndLatest(t *testing.T) {

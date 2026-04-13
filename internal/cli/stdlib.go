@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 
 	"github.com/spf13/cobra"
 )

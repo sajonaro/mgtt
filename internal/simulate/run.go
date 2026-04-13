@@ -4,10 +4,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/engine"
-	"github.com/sajonaro/mgtt/internal/facts"
-	"github.com/sajonaro/mgtt/internal/model"
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/engine"
+	"github.com/mgt-tool/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/model"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 )
 
 // Run executes a single simulation scenario against the model and returns

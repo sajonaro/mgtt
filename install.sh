@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="sajonaro/mgtt"
+REPO="mgt-tool/mgtt"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and arch

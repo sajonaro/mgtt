@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/sajonaro/mgtt/internal/expr"
-	"github.com/sajonaro/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/expr"
+	"github.com/mgt-tool/mgtt/internal/facts"
 )
 
 // makeCtx builds an expr.Ctx from a simple map of component→key→value plus a

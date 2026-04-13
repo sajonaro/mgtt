@@ -5,7 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/sajonaro/mgtt/internal/cli.version=${VERSION}" -o /mgtt ./cmd/mgtt
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/mgt-tool/mgtt/internal/cli.version=${VERSION}" -o /mgtt ./cmd/mgtt
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates git bash

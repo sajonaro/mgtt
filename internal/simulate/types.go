@@ -1,6 +1,6 @@
 package simulate
 
-import "github.com/sajonaro/mgtt/internal/engine"
+import "github.com/mgt-tool/mgtt/internal/engine"
 
 // Scenario is a simulation scenario loaded from a YAML file.
 type Scenario struct {

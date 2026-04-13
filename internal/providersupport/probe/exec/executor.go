@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/providersupport/probe"
+	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
 )
 
 // Executor runs probe commands by invoking them through the system shell.

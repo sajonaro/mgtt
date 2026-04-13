@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/expr"
-	"github.com/sajonaro/mgtt/internal/facts"
-	"github.com/sajonaro/mgtt/internal/model"
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/expr"
+	"github.com/mgt-tool/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/model"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 )
 
 // ---------------------------------------------------------------------------

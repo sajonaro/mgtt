@@ -47,10 +47,10 @@ $ mgtt plan
 ## Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/mgt-tool/mgtt/main/install.sh | sh
 ```
 
-Or: `go install github.com/sajonaro/mgtt/cmd/mgtt@latest` | Or: `docker run --rm -v $(pwd):/workspace ghcr.io/sajonaro/mgtt`
+Or: `go install github.com/mgt-tool/mgtt/cmd/mgtt@latest` | Or: `docker run --rm -v $(pwd):/workspace ghcr.io/mgt-tool/mgtt`
 
 ## Quick start
 
@@ -85,7 +85,7 @@ mgtt plan                          # troubleshoot a live system
 - [Provider Registry](./docs/reference/registry.md) — official and community providers
 - [Writing Providers](./docs/providers/overview.md) — teach mgtt about your technology
 - [Full Specification](./docs/specs.md) — the v1.0 spec
-- [Documentation site](https://sajonaro.github.io/mgtt) — browsable docs
+- [Documentation site](https://mgt-tool.github.io/mgtt) — browsable docs
 
 ## License
 

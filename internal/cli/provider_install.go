@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sajonaro/mgtt/internal/providersupport"
-	"github.com/sajonaro/mgtt/internal/registry"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/registry"
 
 	"github.com/spf13/cobra"
 )

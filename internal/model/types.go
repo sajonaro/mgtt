@@ -1,6 +1,6 @@
 package model
 
-import "github.com/sajonaro/mgtt/internal/expr"
+import "github.com/mgt-tool/mgtt/internal/expr"
 
 // Model is the in-memory representation of a system.model.yaml file after
 // loading and graph construction.

@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sajonaro/mgtt/internal/model"
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/model"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 
 	"github.com/spf13/cobra"
 )

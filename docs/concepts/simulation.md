@@ -249,7 +249,7 @@ jobs:
 
       - name: install mgtt
         run: |
-          curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
+          curl -sSL https://raw.githubusercontent.com/mgt-tool/mgtt/main/install.sh | sh
 
       - name: validate model
         run: mgtt model validate

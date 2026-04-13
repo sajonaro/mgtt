@@ -1,5 +1,5 @@
 VERSION := $(shell cat VERSION)
-LDFLAGS := -ldflags "-X github.com/sajonaro/mgtt/internal/cli.version=$(VERSION)"
+LDFLAGS := -ldflags "-X github.com/mgt-tool/mgtt/internal/cli.version=$(VERSION)"
 
 .PHONY: build test vet clean
 

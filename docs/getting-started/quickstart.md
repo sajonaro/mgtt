@@ -7,10 +7,10 @@ A complete end-to-end example: write a model, write a scenario, validate, simula
 ## 1. Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/mgt-tool/mgtt/main/install.sh | sh
 ```
 
-Or: `go install github.com/sajonaro/mgtt/cmd/mgtt@latest`
+Or: `go install github.com/mgt-tool/mgtt/cmd/mgtt@latest`
 
 ## 2. Scaffold the model
 
@@ -238,7 +238,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: install mgtt
-        run: curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
+        run: curl -sSL https://raw.githubusercontent.com/mgt-tool/mgtt/main/install.sh | sh
       - name: validate model
         run: mgtt model validate
       - name: run scenarios

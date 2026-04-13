@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/facts"
 )
 
 // Incident represents an active or completed incident session.

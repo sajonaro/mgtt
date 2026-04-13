@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 )
 
 // testdataPath returns the absolute path to the testdata/models directory,

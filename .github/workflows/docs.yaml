@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'site-docs/**'
+      - 'docs/**'
       - 'mkdocs.yml'
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
 
       - run: mkdocs build -d _site
         env:
-          SITE_URL: https://sajonaro.github.io/mgtt
+          SITE_URL: https://mgt-tool.github.io/mgtt
 
       - uses: actions/upload-pages-artifact@v4
         with:

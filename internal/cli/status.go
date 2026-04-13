@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/sajonaro/mgtt/internal/facts"
-	"github.com/sajonaro/mgtt/internal/incident"
-	"github.com/sajonaro/mgtt/internal/model"
-	"github.com/sajonaro/mgtt/internal/providersupport"
-	"github.com/sajonaro/mgtt/internal/state"
+	"github.com/mgt-tool/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/incident"
+	"github.com/mgt-tool/mgtt/internal/model"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/state"
 
 	"github.com/spf13/cobra"
 )

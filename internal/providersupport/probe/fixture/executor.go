@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
-	"github.com/sajonaro/mgtt/internal/providersupport/probe"
+	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
 )
 
 // fixtureEntry holds the raw stdout and exit code for a single probe.

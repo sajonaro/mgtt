@@ -1,7 +1,7 @@
 site_name: MGTT — Model Guided Troubleshooting Tool
-site_url: https://sajonaro.github.io/mgtt
-repo_url: https://github.com/sajonaro/mgtt
-repo_name: sajonaro/mgtt
+site_url: https://mgt-tool.github.io/mgtt
+repo_url: https://github.com/mgt-tool/mgtt
+repo_name: mgt-tool/mgtt
 docs_dir: docs
 
 theme:

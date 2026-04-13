@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sajonaro/mgtt/internal/incident"
+	"github.com/mgt-tool/mgtt/internal/incident"
 )
 
 func TestStartAndEnd(t *testing.T) {

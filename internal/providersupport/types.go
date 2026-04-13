@@ -3,7 +3,7 @@ package providersupport
 import (
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/expr"
+	"github.com/mgt-tool/mgtt/internal/expr"
 )
 
 // Provider is the in-memory representation of a loaded provider definition.

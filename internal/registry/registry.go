@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DefaultRegistryURL = "https://sajonaro.github.io/mgtt/registry.yaml"
+const DefaultRegistryURL = "https://mgt-tool.github.io/mgtt/registry.yaml"
 const cacheTTL = 24 * time.Hour
 
 // Entry is a single provider in the registry.

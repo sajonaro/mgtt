@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/sajonaro/mgtt/internal/model"
-	"github.com/sajonaro/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/model"
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 )
 
 func repoRoot() string {

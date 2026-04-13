@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/expr"
+	"github.com/mgt-tool/mgtt/internal/expr"
 
 	"gopkg.in/yaml.v3"
 )

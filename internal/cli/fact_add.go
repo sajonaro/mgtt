@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sajonaro/mgtt/internal/facts"
-	"github.com/sajonaro/mgtt/internal/incident"
+	"github.com/mgt-tool/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/incident"
 
 	"github.com/spf13/cobra"
 )

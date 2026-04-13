@@ -137,13 +137,13 @@ Default active state: `live`
 
 ## Docker provider (community)
 
-Install: `mgtt provider install https://github.com/sajonaro/mgtt-provider-docker`
+Install: `mgtt provider install https://github.com/mgt-tool/mgtt-provider-docker`
 
 ### `container`
 
 A Docker container.
 
-See the [provider repository](https://github.com/sajonaro/mgtt-provider-docker) for the full type definition.
+See the [provider repository](https://github.com/mgt-tool/mgtt-provider-docker) for the full type definition.
 
 ---
 
