@@ -18,12 +18,22 @@ go install github.com/sajonaro/mgtt/cmd/mgtt@latest
 
 ## Docker
 
-No installation needed — just Docker:
+No installation needed — just Docker. Mount your project directory as `/workspace`:
 
 ```bash
-docker compose run --rm mgtt version
-docker compose run --rm mgtt simulate --all
-docker compose run --rm mgtt plan
+docker run --rm -v $(pwd):/workspace ghcr.io/sajonaro/mgtt version
+docker run --rm -v $(pwd):/workspace ghcr.io/sajonaro/mgtt simulate --all
+docker run --rm -v $(pwd):/workspace ghcr.io/sajonaro/mgtt model validate
+```
+
+For live troubleshooting, also mount your credentials:
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v ~/.kube:/home/mgtt/.kube:ro \
+  -v ~/.aws:/home/mgtt/.aws:ro \
+  ghcr.io/sajonaro/mgtt plan
 ```
 
 ## From Source
@@ -46,10 +56,10 @@ Removes the `mgtt` binary and the `~/.mgtt` data directory (installed providers 
 ## Install Providers
 
 ```bash
-# Built-in providers
+# Official providers (resolved via registry)
 mgtt provider install kubernetes aws
 
-# Community providers (from GitHub)
+# Community providers (from GitHub URL)
 mgtt provider install https://github.com/sajonaro/mgtt-provider-docker
 ```
 
@@ -58,3 +68,40 @@ Verify:
 ```bash
 mgtt provider ls
 ```
+
+### Providers in Docker
+
+Providers are installed at runtime, not baked into the image. Use a named volume to persist them across runs:
+
+```bash
+# Install providers (persisted in the mgtt-data volume)
+docker run --rm -v mgtt-data:/data ghcr.io/sajonaro/mgtt provider install kubernetes aws
+
+# Run commands — mount both your project and the provider volume
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v mgtt-data:/data \
+  ghcr.io/sajonaro/mgtt simulate --all
+```
+
+The `mgtt-data` volume stores installed providers and the registry cache. Install once, reuse across runs.
+
+For live troubleshooting, add your credentials:
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v mgtt-data:/data \
+  -v ~/.kube:/home/mgtt/.kube:ro \
+  -v ~/.aws:/home/mgtt/.aws:ro \
+  ghcr.io/sajonaro/mgtt plan
+```
+
+!!! tip "Shell alias"
+    To avoid typing the volume mounts every time:
+
+    ```bash
+    alias mgtt='docker run --rm -v $(pwd):/workspace -v mgtt-data:/data ghcr.io/sajonaro/mgtt'
+    mgtt simulate --all
+    mgtt provider ls
+    ```

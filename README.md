@@ -50,7 +50,7 @@ $ mgtt plan
 curl -sSL https://raw.githubusercontent.com/sajonaro/mgtt/main/install.sh | sh
 ```
 
-Or: `go install github.com/sajonaro/mgtt/cmd/mgtt@latest`
+Or: `go install github.com/sajonaro/mgtt/cmd/mgtt@latest` | Or: `docker run --rm -v $(pwd):/workspace ghcr.io/sajonaro/mgtt`
 
 ## Quick start
 
