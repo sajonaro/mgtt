@@ -590,6 +590,7 @@ loaded and merged at provider load time.
 | name        | yes      | unique, lowercase, hyphen-separated            |
 | version     | yes      | semver                                         |
 | description | yes      | one line                                       |
+| categories  | no       | list of high-level coverage groups (e.g. `workloads`, `storage`, `rbac`) — surfaced by `mgtt provider inspect` and mirrored by the community registry |
 | requires    | yes      | `mgtt: "<version_constraint>"`                 |
 | command     | no       | path to provider binary; `$MGTT_PROVIDER_DIR` is substituted |
 

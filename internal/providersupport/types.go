@@ -18,7 +18,8 @@ type ProviderMeta struct {
 	Name        string
 	Version     string
 	Description string
-	Command     string // path to provider binary; may contain $MGTT_PROVIDER_DIR
+	Categories  []string // high-level coverage groups (e.g. "workloads", "storage")
+	Command     string   // path to provider binary; may contain $MGTT_PROVIDER_DIR
 }
 
 type ProviderHooks struct {

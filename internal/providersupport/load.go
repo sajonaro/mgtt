@@ -21,10 +21,11 @@ type rawProvider struct {
 }
 
 type rawMeta struct {
-	Name        string `yaml:"name"`
-	Version     string `yaml:"version"`
-	Description string `yaml:"description"`
-	Command     string `yaml:"command"`
+	Name        string   `yaml:"name"`
+	Version     string   `yaml:"version"`
+	Description string   `yaml:"description"`
+	Categories  []string `yaml:"categories"`
+	Command     string   `yaml:"command"`
 }
 
 type rawHooks struct {
@@ -98,6 +99,7 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 			Name:        raw.Meta.Name,
 			Version:     raw.Meta.Version,
 			Description: raw.Meta.Description,
+			Categories:  raw.Meta.Categories,
 			Command:     raw.Meta.Command,
 		},
 		Hooks:     ProviderHooks{Install: raw.Hooks.Install},

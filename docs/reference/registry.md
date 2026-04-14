@@ -6,7 +6,7 @@ Community-maintained providers for mgtt.
 |----------|--------|---------|
 | [kubernetes](https://github.com/mgt-tool/mgtt-provider-kubernetes) | workloads, networking, scaling, storage, cluster, prerequisites, rbac, webhooks, extensibility | `mgtt provider install kubernetes` |
 | [aws](https://github.com/mgt-tool/mgtt-provider-aws) | databases, compute, messaging, storage | `mgtt provider install aws` |
-| [docker](https://github.com/sajonaro/mgtt-provider-docker) | containers | `mgtt provider install docker` |
+| [docker](https://github.com/mgt-tool/mgtt-provider-docker) | containers | `mgtt provider install docker` |
 
 Run `mgtt provider inspect <name>` after install to see the full type catalog the provider declares — the registry intentionally shows categories only.
 
@@ -35,7 +35,3 @@ providers:
     description: AWS managed services via aws-cli
     categories: [databases, compute, messaging, storage]
 ```
-
-### Why categories, not types
-
-A provider can declare dozens of component types (kubernetes alone has ~40). Enumerating them in the registry duplicates information the provider already exposes and goes stale fast. Categories stay stable as the provider grows; the authoritative list lives in the provider's own `provider.yaml`. Call `mgtt provider inspect <name>` to see every type, its facts, states, and failure modes.
