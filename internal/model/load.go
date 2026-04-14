@@ -10,10 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ---------------------------------------------------------------------------
-// Raw YAML structures (unexported)
-// ---------------------------------------------------------------------------
-
 // rawModel is the top-level YAML structure.
 type rawModel struct {
 	Meta       rawMeta                   `yaml:"meta"`
@@ -46,10 +42,6 @@ type rawDependency struct {
 type rawFailMode struct {
 	CanCause []string `yaml:"can_cause"`
 }
-
-// ---------------------------------------------------------------------------
-// Load
-// ---------------------------------------------------------------------------
 
 // Load reads the YAML file at path, parses it into a Model, and builds the
 // internal dependency graph.
@@ -141,10 +133,6 @@ func Load(path string) (*Model, error) {
 
 	return m, nil
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 // normaliseOn converts the raw "on" value (which may be a string or
 // []interface{}) into []string.

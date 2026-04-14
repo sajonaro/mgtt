@@ -29,10 +29,6 @@ func Parse(input string) (Node, error) {
 	return node, nil
 }
 
-// ---------------------------------------------------------------------------
-// Tokenizer
-// ---------------------------------------------------------------------------
-
 // tokenize splits input into tokens, keeping operators as separate tokens.
 // Whitespace is a separator. Multi-character operators (==, !=, <=, >=) are
 // kept whole. component.fact is kept as a single token.
@@ -93,10 +89,6 @@ func isWordStart(r rune) bool {
 func isWordContinue(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '.' || r == '-'
 }
-
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
 
 type parser struct {
 	tokens []string
@@ -278,35 +270,32 @@ func isCmpOp(s string) bool {
 }
 
 // parseValue reads an int, float, bool, or string literal.
-func (p *parser) parseValue() (Value, error) {
+func (p *parser) parseValue() (any, error) {
 	tok, ok := p.peek()
 	if !ok {
-		return Value{}, fmt.Errorf("expected value, got end of input")
+		return nil, fmt.Errorf("expected value, got end of input")
 	}
 	p.consume()
 	return parseValueToken(tok), nil
 }
 
-// parseValueToken converts a token string into a typed Value.
-func parseValueToken(tok string) Value {
-	// bool
-	if tok == "true" {
-		b := true
-		return Value{BoolVal: &b}
+// parseValueToken converts a token string into one of int, float64, bool, string.
+func parseValueToken(tok string) any { return InferValue(tok) }
+
+// InferValue coerces a raw string into the narrowest matching primitive type:
+// "true"/"false" → bool, "42" → int, "3.14" → float64, anything else → string.
+func InferValue(s string) any {
+	switch s {
+	case "true":
+		return true
+	case "false":
+		return false
 	}
-	if tok == "false" {
-		b := false
-		return Value{BoolVal: &b}
+	if iv, err := strconv.Atoi(s); err == nil {
+		return iv
 	}
-	// int
-	if iv, err := strconv.Atoi(tok); err == nil {
-		return Value{IntVal: &iv}
+	if fv, err := strconv.ParseFloat(s, 64); err == nil {
+		return fv
 	}
-	// float
-	if fv, err := strconv.ParseFloat(tok, 64); err == nil {
-		return Value{FloatVal: &fv}
-	}
-	// string
-	s := tok
-	return Value{StringVal: &s}
+	return s
 }

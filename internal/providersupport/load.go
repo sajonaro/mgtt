@@ -12,17 +12,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ---------------------------------------------------------------------------
-// Raw intermediate structs for YAML decoding (sans types, which need
-// special treatment for state ordering).
-// ---------------------------------------------------------------------------
-
 type rawProvider struct {
 	Meta      rawMeta           `yaml:"meta"`
 	Variables map[string]rawVar `yaml:"variables"`
 	Auth      rawAuth           `yaml:"auth"`
 	Hooks     rawHooks          `yaml:"hooks"`
-	// Types intentionally omitted — parsed manually from yaml.Node tree.
+	// Types are parsed separately to preserve declaration order.
 }
 
 type rawMeta struct {
@@ -67,10 +62,6 @@ type rawProbe struct {
 type rawFailMode struct {
 	CanCause []string `yaml:"can_cause"`
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 // LoadFromBytes parses a provider YAML from a byte slice.
 func LoadFromBytes(data []byte) (*Provider, error) {
@@ -223,10 +214,6 @@ func LoadFromDir(dir string) (*Provider, error) {
 
 	return p, nil
 }
-
-// ---------------------------------------------------------------------------
-// Internal parsing helpers
-// ---------------------------------------------------------------------------
 
 // mappingGet returns the value node for a key within a MappingNode, or nil.
 func mappingGet(node *yaml.Node, key string) *yaml.Node {

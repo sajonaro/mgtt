@@ -23,10 +23,6 @@ func Validate(m *Model, reg *providersupport.Registry) *ValidationResult {
 	return result
 }
 
-// ---------------------------------------------------------------------------
-// Pass 2 — Type resolution
-// ---------------------------------------------------------------------------
-
 func pass2TypeResolution(m *Model, reg *providersupport.Registry, result *ValidationResult) {
 	for _, name := range m.Order {
 		comp := m.Components[name]
@@ -48,10 +44,6 @@ func pass2TypeResolution(m *Model, reg *providersupport.Registry, result *Valida
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Pass 1 — Structural
-// ---------------------------------------------------------------------------
 
 func pass1Structural(m *Model, result *ValidationResult) {
 	if m.Meta.Name == "" {
@@ -77,10 +69,6 @@ func pass1Structural(m *Model, result *ValidationResult) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Pass 3 — Dependency references
-// ---------------------------------------------------------------------------
 
 func pass3DepRefs(m *Model, result *ValidationResult) {
 	for _, name := range m.Order {
@@ -147,28 +135,11 @@ func levenshtein(a, b string) int {
 			del := dp[i-1][j] + 1
 			ins := dp[i][j-1] + 1
 			sub := dp[i-1][j-1] + cost
-			dp[i][j] = min3(del, ins, sub)
+			dp[i][j] = min(del, ins, sub)
 		}
 	}
 	return dp[la][lb]
 }
-
-func min3(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
-}
-
-// ---------------------------------------------------------------------------
-// Pass 4 — Cycle detection
-// ---------------------------------------------------------------------------
 
 func pass4Cycles(m *Model, result *ValidationResult) {
 	if m.graph == nil {

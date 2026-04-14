@@ -18,16 +18,13 @@ import (
 // If entry is non-empty it is used as the starting component; otherwise
 // the model's EntryPoint (first component with in-degree 0) is used.
 func Plan(m *model.Model, reg *providersupport.Registry, store *facts.Store, entry string) *PathTree {
-	// Stage 1 — Entry selection
 	if entry == "" {
 		entry = m.EntryPoint()
 	}
 
-	// Stage 2 — State derivation (moved before path enumeration so that
-	// while-guard expressions on dependency edges can be evaluated).
+	// State derivation must precede path enumeration so while-guard
+	// expressions on dependency edges can reference derived states.
 	derivation := state.Derive(m, reg, store)
-
-	// Stage 3 — Path enumeration (with while-guard filtering)
 	paths := enumeratePaths(m, entry, store, derivation)
 
 	var alive []Path
@@ -158,10 +155,7 @@ func enumeratePaths(m *model.Model, entry string, store *facts.Store, derivation
 					continue
 				}
 				visited[target] = true
-				newPath := make([]string, len(curr.path)+1)
-				copy(newPath, curr.path)
-				newPath[len(curr.path)] = target
-
+				newPath := append(append([]string(nil), curr.path...), target)
 				paths = append(paths, Path{Components: newPath})
 				queue = append(queue, bfsItem{name: target, path: newPath})
 			}
@@ -180,6 +174,29 @@ func enumeratePaths(m *model.Model, entry string, store *facts.Store, derivation
 	})
 
 	return paths
+}
+
+// EliminatedOnly returns the components that appear on eliminated paths but
+// never on a surviving path. Order is deterministic (declaration order on
+// first occurrence, deduped).
+func EliminatedOnly(tree *PathTree) []string {
+	surviving := map[string]bool{}
+	for _, p := range tree.Paths {
+		for _, c := range p.Components {
+			surviving[c] = true
+		}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range tree.Eliminated {
+		for _, c := range p.Components {
+			if !surviving[c] && !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		}
+	}
+	return out
 }
 
 // ResolveDefaultActive looks up the default_active_state for a component's

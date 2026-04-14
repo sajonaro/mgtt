@@ -2,9 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
+	"github.com/mgt-tool/mgtt/internal/expr"
 	"github.com/mgt-tool/mgtt/internal/facts"
 	"github.com/mgt-tool/mgtt/internal/incident"
 
@@ -32,18 +32,7 @@ var factAddCmd = &cobra.Command{
 			return fmt.Errorf("no active incident: %w", err)
 		}
 
-		// Parse value: try int, then float, then bool, then string.
-		var value any
-		if v, err := strconv.Atoi(rawValue); err == nil {
-			value = v
-		} else if v, err := strconv.ParseFloat(rawValue, 64); err == nil {
-			value = v
-		} else if v, err := strconv.ParseBool(rawValue); err == nil {
-			value = v
-		} else {
-			value = rawValue
-		}
-
+		value := expr.InferValue(rawValue)
 		f := facts.Fact{
 			Key:       key,
 			Value:     value,

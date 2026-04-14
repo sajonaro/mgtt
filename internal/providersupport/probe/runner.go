@@ -7,42 +7,51 @@ import (
 	"os/exec"
 )
 
-// RunnerResult is the JSON structure returned by runner binaries on stdout.
-type RunnerResult struct {
-	Value any    `json:"value"`
-	Raw   string `json:"raw"`
-}
-
-// ExternalRunner shells out to a runner binary and parses the JSON result.
+// ExternalRunner invokes a provider's runner binary and parses its JSON
+// result. It implements Executor so it can be composed in a Mux.
 type ExternalRunner struct {
-	Binary string // e.g. "mgtt-provider-kubernetes"
+	Binary string
 }
 
-// NewExternalRunner returns an ExternalRunner that calls the named binary.
 func NewExternalRunner(binary string) *ExternalRunner {
 	return &ExternalRunner{Binary: binary}
 }
 
-// Probe invokes the runner binary and parses its JSON output into a Result.
-func (r *ExternalRunner) Probe(ctx context.Context, component, fact string, vars map[string]string) (Result, error) {
-	args := []string{"probe", component, fact}
-	if ns, ok := vars["namespace"]; ok {
+// Run implements Executor.
+func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (Result, error) {
+	args := []string{"probe", cmd.Component, cmd.Fact}
+	if ns := cmd.Vars["namespace"]; ns != "" {
 		args = append(args, "--namespace", ns)
 	}
-	if typ, ok := vars["type"]; ok {
-		args = append(args, "--type", typ)
+	if cmd.Type != "" {
+		args = append(args, "--type", cmd.Type)
 	}
 
-	cmd := exec.CommandContext(ctx, r.Binary, args...)
-	out, err := cmd.Output()
+	out, err := exec.CommandContext(ctx, r.Binary, args...).Output()
 	if err != nil {
 		return Result{}, fmt.Errorf("runner %s: %w", r.Binary, err)
 	}
 
-	var rr RunnerResult
+	var rr struct {
+		Value any    `json:"value"`
+		Raw   string `json:"raw"`
+	}
 	if err := json.Unmarshal(out, &rr); err != nil {
 		return Result{}, fmt.Errorf("runner %s: parse output: %w", r.Binary, err)
 	}
-
 	return Result{Raw: rr.Raw, Parsed: rr.Value}, nil
+}
+
+// Mux routes probe commands to a per-provider runner when one is registered,
+// falling back to Default otherwise.
+type Mux struct {
+	Default Executor
+	Runners map[string]*ExternalRunner
+}
+
+func (m *Mux) Run(ctx context.Context, cmd Command) (Result, error) {
+	if r, ok := m.Runners[cmd.Provider]; ok {
+		return r.Run(ctx, cmd)
+	}
+	return m.Default.Run(ctx, cmd)
 }

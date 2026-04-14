@@ -48,7 +48,16 @@ func (s *Store) AllComponents() []string {
 }
 
 // IsDiskBacked reports whether the store is backed by a file on disk.
-// In-memory stores (created with NewInMemory) return false.
 func (s *Store) IsDiskBacked() bool {
 	return s.path != ""
+}
+
+// LookupValue satisfies expr.FactLookup. Returns the latest value for
+// (component, key) and whether such a fact exists.
+func (s *Store) LookupValue(component, key string) (any, bool) {
+	f := s.Latest(component, key)
+	if f == nil {
+		return nil, false
+	}
+	return f.Value, true
 }

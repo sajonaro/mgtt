@@ -2,8 +2,11 @@ package probe
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var placeholderRE = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 
 // Substitute replaces template placeholders in a command string.
 //
@@ -11,84 +14,33 @@ import (
 //   - {namespace} → modelVars["namespace"]
 //   - {varName}   → modelVars[varName] or providerVars[varName]
 //
-// Lookup order: modelVars takes precedence over providerVars.
-func Substitute(template, component string, modelVars map[string]string, providerVars map[string]string) string {
-	result := template
-
-	// Replace {name} with the component name.
-	result = strings.ReplaceAll(result, "{name}", component)
-
-	// Replace all other {varName} placeholders.
-	result = replacePlaceholders(result, component, modelVars, providerVars)
-
-	return result
-}
-
-// replacePlaceholders scans for {…} tokens and substitutes them.
-func replacePlaceholders(s, component string, modelVars, providerVars map[string]string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-
-	i := 0
-	for i < len(s) {
-		open := strings.Index(s[i:], "{")
-		if open == -1 {
-			b.WriteString(s[i:])
-			break
-		}
-		open += i
-		b.WriteString(s[i:open])
-
-		close := strings.Index(s[open:], "}")
-		if close == -1 {
-			// No matching close — write rest as-is.
-			b.WriteString(s[open:])
-			break
-		}
-		close += open
-
-		key := s[open+1 : close]
-
-		// {name} is already handled in Substitute, but handle it here too for
-		// safety when called directly.
+// Lookup order: modelVars takes precedence over providerVars. Unknown
+// placeholders are left intact.
+func Substitute(template, component string, modelVars, providerVars map[string]string) string {
+	return placeholderRE.ReplaceAllStringFunc(template, func(match string) string {
+		key := match[1 : len(match)-1]
 		if key == "name" {
-			b.WriteString(component)
-		} else if val, ok := modelVars[key]; ok {
-			b.WriteString(val)
-		} else if providerVars != nil {
-			if val, ok := providerVars[key]; ok {
-				b.WriteString(val)
-			} else {
-				// Unknown placeholder — leave as-is.
-				b.WriteString(s[open : close+1])
-			}
-		} else {
-			// Unknown placeholder — leave as-is.
-			b.WriteString(s[open : close+1])
+			return component
 		}
-
-		i = close + 1
-	}
-
-	return b.String()
+		if v, ok := modelVars[key]; ok {
+			return v
+		}
+		if v, ok := providerVars[key]; ok {
+			return v
+		}
+		return match
+	})
 }
 
 // ValidateCommand checks that the rendered command does not contain shell
 // metacharacters that were not already present in the original template.
-// This guards against command injection through variable substitution.
+// Guards against command injection through variable substitution.
 func ValidateCommand(rendered, template string) error {
 	metacharacters := []string{";", "&&", "||", "|", "$(", "`", ">>", "<<", ">", "<", "\n"}
-
 	for _, meta := range metacharacters {
-		// Count occurrences in template vs rendered.
-		templateCount := strings.Count(template, meta)
-		renderedCount := strings.Count(rendered, meta)
-
-		if renderedCount > templateCount {
-			return fmt.Errorf("injection detected: %q appears %d times in rendered command but only %d times in template",
-				meta, renderedCount, templateCount)
+		if strings.Count(rendered, meta) > strings.Count(template, meta) {
+			return fmt.Errorf("injection detected: %q appears more often in rendered command than in template", meta)
 		}
 	}
-
 	return nil
 }

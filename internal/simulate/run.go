@@ -57,27 +57,9 @@ func extractConclusion(tree *engine.PathTree) Expectation {
 		}
 	}
 
-	// Eliminated: components that appear ONLY on eliminated paths and NOT on
-	// any surviving path.
-	surviving := map[string]bool{}
-	for _, p := range tree.Paths {
-		for _, c := range p.Components {
-			surviving[c] = true
-		}
-	}
-	seen := map[string]bool{}
-	var elim []string
-	for _, p := range tree.Eliminated {
-		for _, c := range p.Components {
-			if !surviving[c] && !seen[c] {
-				seen[c] = true
-				elim = append(elim, c)
-			}
-		}
-	}
+	elim := engine.EliminatedOnly(tree)
 	sort.Strings(elim)
 	ex.Eliminated = elim
-
 	return ex
 }
 

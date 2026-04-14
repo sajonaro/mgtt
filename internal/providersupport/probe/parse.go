@@ -18,7 +18,7 @@ import (
 //   - string       — trim whitespace, return as string
 //   - exit_code    — exitCode==0 → true, else false (stdout ignored)
 //   - json:<path>  — parse stdout as JSON, extract value at dot-path
-//   - lines:<N>    — count non-empty lines (N is ignored in this version)
+//   - lines:<N>    — count non-empty lines (N is an unused legacy suffix)
 //   - regex:<pat>  — first capture group, or whole match if no groups
 func ParseOutput(mode string, stdout string, exitCode int) (any, error) {
 	switch {

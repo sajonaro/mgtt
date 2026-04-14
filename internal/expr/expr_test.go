@@ -42,8 +42,8 @@ func TestParseSimpleComparison(t *testing.T) {
 	if cmp.Op != expr.OpEq {
 		t.Errorf("op: got %v want OpEq", cmp.Op)
 	}
-	if cmp.Value.IntVal == nil || *cmp.Value.IntVal != 3 {
-		t.Errorf("value: expected IntVal=3")
+	if cmp.Value != 3 {
+		t.Errorf("value: got %v, want 3", cmp.Value)
 	}
 }
 
@@ -101,8 +101,8 @@ func TestParseStateComparison(t *testing.T) {
 	if cmp.Fact != "state" {
 		t.Errorf("fact: got %q want %q", cmp.Fact, "state")
 	}
-	if cmp.Value.StringVal == nil || *cmp.Value.StringVal != "starting" {
-		t.Errorf("value: expected StringVal=starting")
+	if cmp.Value != "starting" {
+		t.Errorf("value: got %v, want starting", cmp.Value)
 	}
 }
 
@@ -115,8 +115,8 @@ func TestParseBool(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *CmpNode, got %T", node)
 	}
-	if cmp.Value.BoolVal == nil || *cmp.Value.BoolVal != true {
-		t.Errorf("value: expected BoolVal=true")
+	if cmp.Value != true {
+		t.Errorf("value: got %v, want true", cmp.Value)
 	}
 }
 

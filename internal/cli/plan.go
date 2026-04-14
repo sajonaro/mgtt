@@ -8,9 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/mgt-tool/mgtt/internal/engine"
 	"github.com/mgt-tool/mgtt/internal/facts"
@@ -40,21 +38,13 @@ func init() {
 	rootCmd.AddCommand(planCmd)
 }
 
-// isInteractive returns true if stdin is a real terminal (not a pipe,
-// /dev/null, or redirected file). It uses the TIOCGWINSZ ioctl to check
-// whether stdin refers to a terminal device with a window size.
+// isInteractive reports whether stdin is attached to a terminal.
 func isInteractive() bool {
-	type winsize struct {
-		Row, Col, Xpixel, Ypixel uint16
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
 	}
-	var ws winsize
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		os.Stdin.Fd(),
-		syscall.TIOCGWINSZ,
-		uintptr(unsafe.Pointer(&ws)),
-	)
-	return errno == 0
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 func runPlan(cmd *cobra.Command, args []string) error {
@@ -68,22 +58,9 @@ func runPlan(cmd *cobra.Command, args []string) error {
 
 	reg := providersupport.LoadAllEmbedded()
 
-	var executor probe.Executor
-	runners := make(map[string]*probe.ExternalRunner)
-	if fixturePath := os.Getenv("MGTT_FIXTURES"); fixturePath != "" {
-		ex, err := fixture.Load(fixturePath)
-		if err != nil {
-			return fmt.Errorf("load fixtures: %w", err)
-		}
-		executor = ex
-	} else {
-		executor = probeexec.Default()
-		for _, p := range reg.All() {
-			if p.Meta.Command != "" {
-				cmd := resolveCommand(p.Meta.Command, p.Meta.Name)
-				runners[p.Meta.Name] = probe.NewExternalRunner(cmd)
-			}
-		}
+	executor, err := buildExecutor(reg)
+	if err != nil {
+		return err
 	}
 
 	// 4. Load fact store from active incident, or fall back to in-memory.
@@ -97,25 +74,23 @@ func runPlan(cmd *cobra.Command, args []string) error {
 
 	interactive := isInteractive()
 
-	// 5. Plan loop.
 	entry := m.EntryPoint()
 	if planComponent != "" {
 		entry = planComponent
 	}
 	renderPlanHeader(w, entry)
 
-	for iteration := 0; iteration < 50; iteration++ { // safety limit
+	// 50 is well above any realistic fact count; the guard catches pathological
+	// models where the engine keeps suggesting probes forever.
+	for iteration := 0; iteration < 50; iteration++ {
 		tree := engine.Plan(m, reg, store, entry)
 
 		renderPlanSuggestion(w, tree)
 
-		// Check termination conditions.
 		if tree.Suggested == nil {
-			// No more probes. If we have a root cause, show it.
 			if tree.RootCause != "" {
 				renderRootCauseSummary(w, tree)
 			} else {
-				// All paths eliminated or no probes left.
 				fmt.Fprintln(w)
 				fmt.Fprintln(w, "  All components healthy -- no root cause found.")
 			}
@@ -134,33 +109,27 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Build and run probe.
 		s := tree.Suggested
-
-		var result probe.Result
 		comp := m.Components[s.Component]
-
-		// Use the external runner if available for this provider.
-		if runner, ok := runners[s.Provider]; ok && comp != nil {
-			vars := map[string]string{
-				"namespace": m.Meta.Vars["namespace"],
-				"type":      comp.Type,
-			}
-			result, err = runner.Probe(context.Background(), s.Component, s.Fact, vars)
-		} else {
-			rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
-			if err := probe.ValidateCommand(rendered, s.Command); err != nil {
-				fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
-				break
-			}
-			result, err = executor.Run(context.Background(), probe.Command{
-				Raw:       rendered,
-				Parse:     s.ParseMode,
-				Provider:  s.Provider,
-				Component: s.Component,
-				Fact:      s.Fact,
-			})
+		compType := ""
+		if comp != nil {
+			compType = comp.Type
 		}
+
+		rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
+		if err := probe.ValidateCommand(rendered, s.Command); err != nil {
+			fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
+			break
+		}
+		result, err := executor.Run(context.Background(), probe.Command{
+			Raw:       rendered,
+			Parse:     s.ParseMode,
+			Provider:  s.Provider,
+			Component: s.Component,
+			Fact:      s.Fact,
+			Type:      compType,
+			Vars:      m.Meta.Vars,
+		})
 		if err != nil {
 			fmt.Fprintf(w, "\n  probe error: %v\n", err)
 			break
@@ -191,6 +160,30 @@ func runPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// buildExecutor selects a probe executor based on MGTT_FIXTURES. In fixture
+// mode, all probes go through the fixture executor. Otherwise the shell
+// executor is used, with any provider runner binaries mixed in via Mux.
+func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
+	if fixturePath := os.Getenv("MGTT_FIXTURES"); fixturePath != "" {
+		ex, err := fixture.Load(fixturePath)
+		if err != nil {
+			return nil, fmt.Errorf("load fixtures: %w", err)
+		}
+		return ex, nil
+	}
+
+	runners := map[string]*probe.ExternalRunner{}
+	for _, p := range reg.All() {
+		if p.Meta.Command != "" {
+			runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
+		}
+	}
+	if len(runners) == 0 {
+		return probeexec.Default(), nil
+	}
+	return &probe.Mux{Default: probeexec.Default(), Runners: runners}, nil
 }
 
 // resolveCommand substitutes $MGTT_PROVIDER_DIR in a command string.
@@ -284,25 +277,7 @@ func renderRootCauseSummary(w io.Writer, tree *engine.PathTree) {
 		}
 	}
 
-	// Show eliminated components (only those NOT on surviving paths).
-	if len(tree.Eliminated) > 0 {
-		surviving := map[string]bool{}
-		for _, p := range tree.Paths {
-			for _, c := range p.Components {
-				surviving[c] = true
-			}
-		}
-		var names []string
-		seen := map[string]bool{}
-		for _, p := range tree.Eliminated {
-			last := p.Components[len(p.Components)-1]
-			if !seen[last] && !surviving[last] {
-				seen[last] = true
-				names = append(names, last)
-			}
-		}
-		if len(names) > 0 {
-			fmt.Fprintf(w, "  Eliminated: %s\n", strings.Join(names, ", "))
-		}
+	if names := engine.EliminatedOnly(tree); len(names) > 0 {
+		fmt.Fprintf(w, "  Eliminated: %s\n", strings.Join(names, ", "))
 	}
 }
