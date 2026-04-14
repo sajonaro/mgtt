@@ -462,14 +462,12 @@ mgtt plan --component myserver
 
 ## Reference Implementations
 
-The `kubernetes/` provider in this directory is the reference implementation.
-Study its source for a complete working example:
+Providers live in their own repositories, not under this directory. Study these for a complete working example:
 
-- `provider.yaml` — full vocabulary with 2 types, 5 facts, 4 states
-- `main.go` — binary using kubectl JSON output
-- `hooks/install.sh` — Go build script
+- [mgtt-provider-kubernetes](https://github.com/mgt-tool/mgtt-provider-kubernetes) — 37-type vocabulary (multi-file `types/`), Go binary using kubectl
+- [mgtt-provider-docker](https://github.com/sajonaro/mgtt-provider-docker) — Docker provider
 
-The `aws/` provider shows a minimal vocabulary-only provider (no binary yet).
+Each repo shows `provider.yaml` vocabulary, `main.go` runner, and `hooks/install.sh`.
 
 ## Design Principles
 

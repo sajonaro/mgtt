@@ -593,7 +593,7 @@ The Helm plugin model is the reference architecture. `provider.yaml` is the
 manifest. The binary is the command. Install hooks handle compilation.
 
 ```
-providers/kubernetes/
+mgtt-provider-kubernetes/            (separate git repository)
 ├── provider.yaml                    vocabulary for the engine
 ├── hooks/
 │   └── install.sh                   compiles or downloads the binary
@@ -1030,13 +1030,12 @@ It demonstrates the full lifecycle: vocabulary declaration, Go binary
 implementing the protocol, install hook, and test coverage.
 
 ```
-providers/kubernetes/
-├── provider.yaml                 types: ingress, deployment
+mgtt-provider-kubernetes/         (github.com/mgt-tool/mgtt-provider-kubernetes)
+├── provider.yaml                 vocabulary meta, auth, variables
+├── types/*.yaml                  one file per component type
 ├── hooks/install.sh              go build -o bin/mgtt-provider-kubernetes .
 ├── go.mod                        imports only stdlib + encoding/json + os/exec
 ├── main.go                       probe/validate/describe handlers
-├── deployment.go                 deployment probing via kubectl JSON
-├── ingress.go                    ingress probing via kubectl JSON
 └── bin/
     └── mgtt-provider-kubernetes  compiled binary
 ```
@@ -1063,7 +1062,7 @@ environment    →   owns credentials (env vars, files, instance roles)
 ### 11.2 Provider Auth Declaration
 
 ```yaml
-# providers/kubernetes/provider.yaml
+# mgtt-provider-kubernetes/provider.yaml
 auth:
   strategy:   environment
   reads_from:
