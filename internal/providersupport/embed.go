@@ -33,13 +33,15 @@ func ProviderDir(name string) string {
 	return ""
 }
 
-// LoadEmbedded loads a provider by name from the search path.
+// LoadEmbedded loads a provider by name from the search path. Uses
+// LoadFromDir so multi-file providers (types/*.yaml) are supported; inline
+// types in provider.yaml still work via LoadFromDir's fallback.
 func LoadEmbedded(name string) (*Provider, error) {
 	dir := ProviderDir(name)
 	if dir == "" {
 		return nil, fmt.Errorf("provider %q not found", name)
 	}
-	return LoadFromFile(filepath.Join(dir, "provider.yaml"))
+	return LoadFromDir(dir)
 }
 
 // ListEmbedded returns the names of all providers found across all search paths.
