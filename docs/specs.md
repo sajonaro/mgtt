@@ -5,9 +5,9 @@
 
 ## 1. What `mgtt` Is
 
-`mgtt` is a tool that lets you encode a system model once, accumulate timestamped
-observations into a fact store, and use constraint propagation over the model
-and facts to guide — not replace — the troubleshooting process.
+`mgtt` lets you encode a system model once, accumulate timestamped observations
+into a fact store, and use constraint propagation over the model and facts to
+guide — not replace — the troubleshooting process.
 
 It is not a monitoring tool. It does not run continuously.
 It is not an automation tool. It does not fix things.
@@ -18,17 +18,19 @@ The closest analogy is Terraform: separate desired state (model) from observed
 state (facts), and reason over the diff. `mgtt` does this for understanding, not
 provisioning.
 
-**The core design principle for users:**
+The core usage model:
 
 ```
-model author    writes system.model.yaml once, calmly, knows the system
-on-call engineer  mgtt incident start
-                  mgtt plan
-                  [Y/n] y   ← repeat until done
-                  mgtt incident end
+model author       writes system.model.yaml once, calmly, knows the system
+on-call engineer   mgtt incident start
+                   mgtt plan
+                   [Y/n] y   <- repeat until done
+                   mgtt incident end
 ```
 
 Cognitive load belongs at authoring time, not incident time.
+
+Implementation: Go. Module path `github.com/mgt-tool/mgtt`. Binary: `mgtt`.
 
 ---
 
@@ -47,7 +49,7 @@ incident session. Current system state is a fact like any other.
 ### 2.3 Provider
 A plugin that owns one or more component types. Defines the vocabulary of
 facts, data types, probes, states, failure modes, and healthy defaults for
-its types. Built on the mgtt stdlib or from scratch. Community-maintained.
+its types. Providers live in their own git repositories, Helm-plugin style.
 
 ### 2.4 Stdlib
 A built-in provider called `mgtt`, always available without import. Defines
@@ -72,8 +74,8 @@ Only the current position is stored as a fact.
 
 ### 2.8 MCP Service
 `mgtt` exposes its constraint engine as an MCP (Model Context Protocol) service.
-LLMs and AI agents can call `mgtt` tools directly, driving the same guided loop
-a human would drive via CLI. CLI and MCP are equal consumers of the same engine.
+LLMs and AI agents call `mgtt` tools directly, driving the same guided loop
+a human drives via CLI. CLI and MCP are equal consumers of the same engine.
 
 ---
 
@@ -82,11 +84,11 @@ a human would drive via CLI. CLI and MCP are equal consumers of the same engine.
 ```
 system.model.yaml       engineer writes once, version controlled
 system.state.yaml       mgtt writes, append only, scoped per incident
-providers/              community maintained, one per technology
+providers/              external repositories, one per technology
 ```
 
-The state machine and failure path tree are always derived on demand.
-Neither is stored separately.
+The state machine and failure path tree are derived on demand. Neither is
+stored separately.
 
 ---
 
@@ -133,46 +135,41 @@ range:   min..max, min.., ..max, or ~ for unconstrained
 default: suggested value (provider types only)
 ```
 
-**Resolution chain:**
+Resolution chain for a literal like `"5s"`:
 
 ```
 expression literal   "5s"
-  → parser recognises unit suffix "s"
-  → looks up which type declares "s" as a valid unit
-  → finds mgtt.duration (base: float, unit: ms|s|m|h|d)
-  → parses "5" as float, attaches unit "s"
-  → value is valid iff fact.type is mgtt.duration or a provider type
-    whose base is mgtt.duration
+  -> parser recognises unit suffix "s"
+  -> looks up which type declares "s" as a valid unit
+  -> finds mgtt.duration (base: float, unit: ms|s|m|h|d)
+  -> parses "5" as float, attaches unit "s"
+  -> value valid iff fact.type is mgtt.duration or a provider type
+     whose base is mgtt.duration
 ```
 
-**Validation occurs at three points:**
+Validation occurs at three points:
 
 ```
 provider load     data_types.base must resolve to a stdlib primitive
                   default must satisfy its own unit and range constraints
 
 model validate    expression literals must match the type declared on
-                  the referenced fact — 5s is valid against a duration
-                  fact, error against an int fact
+                  the referenced fact
 
 fact append       value type-checked against the fact's declared type
-                  at collection time — int fact rejects a string value,
-                  duration fact rejects a bare int without unit context
+                  at collection time
 ```
 
 Unit-suffixed literals in expressions (5s, 10mb) are only valid when the
 referenced fact's type declares that unit. `model validate` checks this
-statically. If the types don't align, the error includes the expected type.
+statically.
 
-### 4.4 Cross-Provider References
-
-Deferred to post-v1.0. In v1.0, providers reference only mgtt stdlib types.
+In v1.0 providers reference only mgtt stdlib types — no cross-provider
+type references.
 
 ---
 
 ## 5. The Constraint Engine
-
-This is the core of `mgtt`. Everything else serves it.
 
 ### 5.1 Four Inputs
 
@@ -186,32 +183,29 @@ domain:             possible failure modes per component
 structural rules:   how failures propagate and when
                     from depends + while conditions in model.yaml
 
-observations:       what we already know to be healthy or unhealthy
+observations:       known healthy or unhealthy facts
                     from the fact store — eliminates branches
 ```
 
-**Entry point** — where traversal begins:
+Entry point — where traversal begins:
 
 ```
 default:    outermost component in the dependency graph
-            (the component nothing else depends on — ingress, load balancer)
-            works for anyone, no system knowledge required
+            (the component nothing else depends on)
 
 override:   --component flag — start from a known-bad component
-            for engineers who already have a hunch
 
 pre-loaded: mgtt fact add before mgtt plan
-            when an alert has already fired with a known fact value
             tree is partially pruned before the first probe
 ```
 
 Degraded inputs:
 
 ```
-no facts         →   no elimination, all paths equally probable
-no while conds   →   paths exist but no activation rules
-no failure modes →   paths exist but no domain to reason over
-no components    →   nothing
+no facts         ->   no elimination, all paths equally probable
+no while conds   ->   paths exist but no activation rules
+no failure modes ->   paths exist but no domain to reason over
+no components    ->   nothing
 ```
 
 ### 5.2 What the Engine Computes
@@ -222,19 +216,19 @@ given what is already known.
 
 ```
 entry point: nginx (outermost)
-probe result: nginx.upstream_count = 0  ✗
+probe result: nginx.upstream_count = 0  x
 
-PATH A  nginx ← api
+PATH A  nginx <- api
           api.state == degraded | draining
-          → probe: api.endpoints   cost: low
+          -> probe: api.endpoints   cost: low
 
-PATH B  nginx ← api ← rds
+PATH B  nginx <- api <- rds
           rds.state == degraded | stopped
-          → follows if PATH A confirmed
+          -> follows if PATH A confirmed
 
-PATH C  nginx ← frontend
+PATH C  nginx <- frontend
           frontend.state == degraded | draining
-          → probe: frontend.endpoints   cost: low
+          -> probe: frontend.endpoints   cost: low
 ```
 
 ### 5.3 Probe Ranking — Information Gain
@@ -248,18 +242,18 @@ prefer:     facts closest to entry point first
 ### 5.4 The Guided Loop
 
 ```
-entry point determined         →   outermost component or override
-constraint propagation         →   computes reachable failure paths
-fact store                     →   eliminates known-healthy branches
-mgtt suggests next probe       →   highest information gain, lowest cost
-probe runs                     →   new fact appended to store
-state machine updates          →   component states derived from new facts
-constraint propagation reruns  →   tree shrinks
-repeat                         →   until one path remains → root cause
+entry point determined         ->   outermost component or override
+constraint propagation         ->   computes reachable failure paths
+fact store                     ->   eliminates known-healthy branches
+mgtt suggests next probe       ->   highest information gain, lowest cost
+probe runs                     ->   new fact appended to store
+state machine updates          ->   component states derived from new facts
+constraint propagation reruns  ->   tree shrinks
+repeat                         ->   until one path remains -> root cause
 ```
 
-State is observed continuously as facts arrive. The engineer never
-declares or advances state manually.
+State is observed continuously as facts arrive. The engineer never declares
+or advances state manually.
 
 ### 5.5 Manual Facts
 
@@ -292,38 +286,12 @@ Providers may define additional values for technology-specific failure modes.
 
 ### 5.7 The Guidance Output
 
-```
-$ mgtt plan
-
-  incident  inc-20240205-0814-001
-  entry     nginx (outermost)
-  state     switching  (observed from facts)
-  paths     2 remaining · 1 eliminated
-
-  failure paths:
-  ────────────────────────────────────────────────────────────────────
-  PATH A   nginx ← api
-           api.state == degraded                    probability: high
-
-  PATH C   nginx ← frontend
-           frontend.state == degraded               probability: low
-
-  eliminated:
-  ────────────────────────────────────────────────────────────────────
-  PATH B   nginx ← api ← rds    rds healthy ✓
-
-  suggested next probe:
-  ────────────────────────────────────────────────────────────────────
-  → mgtt probe api ready_replicas
-    eliminates: PATH A if healthy
-    cost:       low
-    access:     kubectl read-only
-
-  fallback if probe unavailable:
-  → mgtt fact add api ready_replicas <value>
-
-  run? [Y/n]
-```
+`mgtt plan` prints the incident id, entry point, observed system state,
+remaining and eliminated failure paths with per-path hypothesis conditions,
+and a single suggested next probe annotated with what it eliminates, its cost,
+and the access it requires. A fallback `mgtt fact add` command is offered in
+case the probe cannot be run automatically. The engineer confirms `[Y/n]` to
+run it.
 
 ---
 
@@ -372,9 +340,9 @@ components:
 ### 6.1 Meta-Level Providers
 
 ```
-meta.providers          →   default for all components
-component.providers     →   override, applies to this component only
-omitted at component    →   inherits meta.providers
+meta.providers          ->   default for all components
+component.providers     ->   override, applies to this component only
+omitted at component    ->   inherits meta.providers
 ```
 
 ### 6.2 Component Fields
@@ -394,18 +362,18 @@ omitted at component    →   inherits meta.providers
    Scan providers list in order.
    First provider that declares the given type wins.
    That provider owns: schema, facts, data types, healthy, states, failure_modes.
-   If no provider declares the type → validation error at model load.
+   If no provider declares the type -> validation error at model load.
    Explicit namespace bypasses scan:
      type: aws.rds_instance
 
 2. FACT RESOLUTION
    Primary provider defines canonical fact vocabulary.
    Supplementary providers contribute additional facts.
-   Name collision → primary wins.
+   Name collision -> primary wins.
 
 3. PROBE RESOLUTION
    Providers run in pecking order. Primary first.
-   Duplicate fact name in same probe run → skip supplementary write.
+   Duplicate fact name in same probe run -> skip supplementary write.
 
 4. DATA TYPE RESOLUTION
    Resolved against: provider data_types block, then mgtt stdlib.
@@ -413,30 +381,19 @@ omitted at component    →   inherits meta.providers
      type: mgtt.duration   # stdlib explicit — identical
 ```
 
-Summary:
-
-```
-providers list      →   ordered, index 0 = primary owner
-primary provider    →   owns type, schema, facts, healthy, states
-supplementary       →   contributes additional facts only
-explicit namespace  →   provider.type bypasses order
-conflict anywhere   →   primary wins
-stdlib              →   always available, no import needed
-```
-
 ### 6.4 Dependency Declarations
 
 ```yaml
 depends:
-  - on: postgres                     # while omitted → provider default active state
+  - on: postgres                     # while omitted -> provider default active state
   - on:    vault
     while: vault.state == starting   # only active during vault startup
   - on:    [primary_db, replica_db]
     while: primary_db.state == live | replica_db.state == live
 ```
 
-**While omitted:** provider's `default_active_state` is assumed. The engineer
-only writes `while` to express something different from the default.
+When `while` is omitted, the provider's `default_active_state` is assumed.
+Engineers only write `while` to express something different from the default.
 
 ### 6.5 The While Expression Grammar
 
@@ -464,22 +421,10 @@ Used in both `depends.while` and provider `states.when`.
 
 ### 6.6 Model Validation
 
-`mgtt model validate` checks structural, logical, and unit correctness.
-On error, it suggests corrections — not just reports problems.
-
-```
-$ mgtt model validate
-
-  ✓ nginx     2 dependencies valid
-  ✓ api       1 dependency valid
-  ✗ postgres  while: postgres.state == running
-              error: state 'running' not defined in kubernetes/statefulset
-              did you mean 'live'?
-  ⚠ cache     while: cache.state == live | cache.state != live
-              warning: tautology — condition always true
-
-  1 error · 1 warning
-```
+`mgtt model validate` checks structural, logical, and unit correctness. It
+reports undefined states, undefined facts, tautologies, contradictions, and
+unit mismatches against declared types. Errors include correction suggestions
+(e.g. "did you mean 'live'?").
 
 ---
 
@@ -553,8 +498,8 @@ Derived automatically. Never set manually.
 ```
 ?   unchecked     no fact exists yet
 ~   stale         older than provider-declared TTL
-✓   healthy       fresh, all conditions hold
-✗   unhealthy     fresh, one or more conditions violated
+ok  healthy       fresh, all conditions hold
+x   unhealthy     fresh, one or more conditions violated
 ```
 
 Stale facts are not used for elimination. `mgtt` suggests re-probing before
@@ -565,39 +510,40 @@ relying on them.
 The state file is the complete incident record. To hand off mid-incident:
 
 ```bash
-# share the state file with a colleague
 $ mgtt incident load inc-20240205-0814-001.state.yaml
 
-✓ incident loaded  8m elapsed · 5 facts · 2 paths eliminated
-  run 'mgtt plan' to continue
+incident loaded  8m elapsed, 5 facts, 2 paths eliminated
+run 'mgtt plan' to continue
 ```
 
 If the model version in the state file does not match the local model,
-`mgtt` warns loudly before proceeding.
+`mgtt` warns before proceeding.
 
 ---
 
 ## 8. Provider Format
 
-A provider is a self-contained directory with two parts:
+Providers are external, Helm-plugin style. Each provider lives in its own git
+repository and is installed into a local provider directory. The mgtt core
+repository contains no provider-specific content.
+
+A provider directory has two parts:
 
 1. **`provider.yaml`** — the vocabulary: types, facts, states, failure modes,
-   healthy conditions. Written in mgtt's language. This is what the constraint
-   engine reads to reason about the system. It never touches the real system.
+   healthy conditions. This is what the constraint engine reads. It never
+   touches the real system.
 
 2. **A provider binary** — the behavior: how to actually probe components,
-   authenticate, parse responses. This is what runs at probe time. It speaks
-   a simple protocol (args in, JSON out) and can be written in any language.
-
-The Helm plugin model is the reference architecture. `provider.yaml` is the
-manifest. The binary is the command. Install hooks handle compilation.
+   authenticate, parse responses. Runs at probe time. Speaks a simple protocol
+   (args in, JSON out) and can be written in any language.
 
 ```
 mgtt-provider-kubernetes/            (separate git repository)
 ├── provider.yaml                    vocabulary for the engine
+├── types/*.yaml                     one file per component type
 ├── hooks/
 │   └── install.sh                   compiles or downloads the binary
-├── go.mod, *.go                     source code (Go, or any language)
+├── go.mod, *.go                     source code
 └── bin/
     └── mgtt-provider-kubernetes     the compiled provider binary
 ```
@@ -634,6 +580,9 @@ types:
     failure_modes:        <failure_mode_map>
 ```
 
+A provider may split its `types` block across multiple files under `types/*.yaml`,
+loaded and merged at provider load time.
+
 ### 8.2 The `meta` Block
 
 | field       | required | description                                    |
@@ -654,16 +603,16 @@ types:
 
 Install hooks run with these environment variables:
 
-| variable            | value                                         |
-|---------------------|-----------------------------------------------|
+| variable            | value                                             |
+|---------------------|---------------------------------------------------|
 | `MGTT_PROVIDER_DIR` | absolute path to the provider's install directory |
-| `MGTT_PROVIDER_NAME`| provider name                                 |
-| `MGTT_BIN`          | path to the mgtt binary                       |
+| `MGTT_PROVIDER_NAME`| provider name                                     |
+| `MGTT_BIN`          | path to the mgtt binary                           |
 
 ### 8.2.2 The Provider Binary Protocol
 
-The provider binary is a black box. mgtt calls it with args, it returns JSON
-on stdout. Any language, any implementation. The protocol has three commands:
+The provider binary is a black box. mgtt calls it with args; it returns JSON
+on stdout. The protocol has three commands:
 
 **probe** — the primary operation:
 ```bash
@@ -676,8 +625,7 @@ mgtt-provider-kubernetes probe <component> <fact> \
 
 **validate** — check auth and connectivity:
 ```bash
-mgtt-provider-kubernetes validate \
-  --namespace <ns>
+mgtt-provider-kubernetes validate --namespace <ns>
 
 # stdout:
 {"ok": true, "auth": "kubectl context (eks-prod)", "access": "read-only"}
@@ -693,7 +641,7 @@ mgtt-provider-kubernetes describe
 Exit code 0 means success. Non-zero means error; stderr contains the message.
 
 mgtt passes model variables as `--<key> <value>` args. The provider binary
-receives the same variables declared in `provider.yaml`'s `variables` block.
+receives the variables declared in `provider.yaml`'s `variables` block.
 
 ### 8.3 The `data_types` Block
 
@@ -712,7 +660,7 @@ Provider-defined types built on stdlib primitives.
 |---------|----------|-------------------------------------------------------|
 | type    | yes      | provider-defined or `mgtt.<primitive>`                |
 | ttl     | yes      | duration after which fact is stale                    |
-| probe   | no       | probe metadata (see 8.5) — informational when binary handles probing |
+| probe   | no       | probe metadata (see 8.5)                              |
 | default | no       | suggested threshold for use in healthy conditions     |
 
 When the provider has a binary (`meta.command`), the binary handles all
@@ -721,19 +669,18 @@ access description) rather than an executable command. The binary receives
 the component name and fact name as args and decides how to collect the data.
 
 When the provider has no binary, the `probe.cmd` template is executed
-directly by mgtt as a shell command (the simple/fallback path for providers
-that don't need complex logic).
+directly by mgtt as a shell command.
 
 ### 8.5 Probe Metadata
 
-| field   | required | description                                           |
-|---------|----------|-------------------------------------------------------|
+| field   | required | description                                            |
+|---------|----------|--------------------------------------------------------|
 | cmd     | no       | command template — used when no provider binary exists |
-| parse   | no       | how to interpret raw output (used with cmd fallback)  |
-| unit    | no       | unit to attach to parsed numeric value                |
-| timeout | no       | max execution time, default 30s                       |
-| cost    | no       | `low` \| `medium` \| `high`, default `low`            |
-| access  | no       | human-readable description of required access         |
+| parse   | no       | how to interpret raw output (used with cmd fallback)   |
+| unit    | no       | unit to attach to parsed numeric value                 |
+| timeout | no       | max execution time, default 30s                        |
+| cost    | no       | `low` \| `medium` \| `high`, default `low`             |
+| access  | no       | human-readable description of required access          |
 
 #### 8.5.1 Command Templates
 
@@ -767,9 +714,9 @@ meta:
 |--------------|------------------------------------------------------------|
 | `int`        | trim whitespace, parse as integer                          |
 | `float`      | trim whitespace, parse as float                            |
-| `bool`       | `true/1/yes` → true, `false/0/no` → false                 |
+| `bool`       | `true/1/yes` -> true, `false/0/no` -> false                |
 | `string`     | trim whitespace, use as-is                                 |
-| `exit_code`  | exit 0 → true, non-zero → false                           |
+| `exit_code`  | exit 0 -> true, non-zero -> false                          |
 | `json:<path>`| parse stdout as JSON, extract value at JSONPath            |
 | `lines:N`    | count non-empty lines, return as int                       |
 | `regex:<pat>`| apply regex, return first capture group as string          |
@@ -778,7 +725,7 @@ meta:
 
 | outcome           | fact state | appended |
 |-------------------|------------|----------|
-| success, parsed   | ✓ or ✗     | yes      |
+| success, parsed   | ok or x    | yes      |
 | success, unparsed | error      | no       |
 | timeout           | ?          | no       |
 | non-zero exit     | ?          | no       |
@@ -820,8 +767,8 @@ default_active_state: live
 ```
 
 States are evaluated in declaration order. First match wins. If none match,
-state is `unknown`. States use only same-component facts in `when` —
-no cross-component references.
+state is `unknown`. States use only same-component facts in `when` — no
+cross-component references.
 
 `mgtt` evaluates states continuously as facts arrive. Engineers never set
 state manually.
@@ -841,13 +788,13 @@ downstream failures.
 
 ### 8.9 State Name Convention
 
-Conventional names — not enforced:
+Conventional names:
 
 ```
-live · starting · degraded · draining · stopped · unknown
+live, starting, degraded, draining, stopped, unknown
 ```
 
-Deviation is fine for technology-specific vocabularies.
+Deviation is acceptable for technology-specific vocabularies.
 
 ### 8.10 Type Name Uniqueness
 
@@ -858,19 +805,17 @@ use explicit namespace:
 type: kubernetes.deployment
 ```
 
-Provider authors check the community registry before naming new types.
-
 ---
 
 ## 9. Complete Provider Example
 
 ```yaml
-# providers/simplecache/provider.yaml
+# mgtt-provider-simplecache/provider.yaml
 
 meta:
   name:        simplecache
   version:     1.0.0
-  description: SimpleCach in-memory cache server
+  description: SimpleCache in-memory cache server
   requires:
     mgtt: ">=1.0"
 
@@ -889,14 +834,14 @@ data_types:
 
 types:
   server:
-    description: SimpleCach server instance
+    description: SimpleCache server instance
 
     facts:
       connected:
         type:  mgtt.bool
         ttl:   15s
         probe:
-          cmd:    simplecach-cli ping {name}:{port}
+          cmd:    simplecache-cli ping {name}:{port}
           parse:  exit_code
           cost:   low
           access: network read
@@ -905,7 +850,7 @@ types:
         type:    hit_ratio
         ttl:     30s
         probe:
-          cmd:    simplecach-cli stats {name}:{port} --field hit_ratio
+          cmd:    simplecache-cli stats {name}:{port} --field hit_ratio
           parse:  float
           cost:   low
           access: network read
@@ -915,7 +860,7 @@ types:
         type:  mgtt.float
         ttl:   30s
         probe:
-          cmd:    simplecach-cli stats {name}:{port} --field evictions_per_sec
+          cmd:    simplecache-cli stats {name}:{port} --field evictions_per_sec
           parse:  float
           cost:   low
           access: network read
@@ -982,21 +927,21 @@ mgtt stdlib inspect <type>       # full definition of a stdlib type
 └── README.md                    authoring guide
 ```
 
-### 10.2 Writing a Provider — The Three Things You Provide
+### 10.2 Writing a Provider
 
-**1. The vocabulary (provider.yaml):**
-Fill in mgtt's schema with your technology's specifics. The schema is mgtt's
-language — `types`, `facts`, `states`, `healthy`, `failure_modes` — you
-supply the values.
+A provider consists of three things:
 
-**2. The binary:**
-Implement the three-command protocol (§8.2.2): `probe`, `validate`, `describe`.
-You can use any language. For Go providers, mgtt publishes a convenience SDK
-(`mgtt/sdk`) with arg parsing and JSON serialization, but it is not required.
+**1. The vocabulary (provider.yaml):** fill in mgtt's schema with the
+technology's specifics — `types`, `facts`, `states`, `healthy`, `failure_modes`.
 
-**3. The install hook:**
-A script that produces the binary. For Go providers: `go build`. For Python:
-set up venv + pip install. For pre-compiled: curl the right platform binary.
+**2. The binary:** implement the three-command protocol (§8.2.2): `probe`,
+`validate`, `describe`. Any language. For Go providers, mgtt publishes a
+convenience SDK (`mgtt/sdk`) with arg parsing and JSON serialization; it is
+not required.
+
+**3. The install hook:** a script that produces the binary. For Go providers:
+`go build`. For Python: venv + pip install. For pre-compiled: curl the right
+platform binary.
 
 ### 10.3 Provider Test Sandbox
 
@@ -1013,35 +958,23 @@ Probes that fail the read-only sandbox are rejected from the community registry.
 ### 10.4 Provider Validation Rules
 
 ```
-meta:         name lowercase+hyphen · version semver · requires.mgtt valid
-              command path resolves · hooks.install exists if declared
-data_types:   base is mgtt stdlib · default satisfies unit and range
+meta:         name lowercase+hyphen, version semver, requires.mgtt valid
+              command path resolves, hooks.install exists if declared
+data_types:   base is mgtt stdlib, default satisfies unit and range
 types:        at least one declared
-facts:        types resolve · healthy refs declared facts
-states:       when: refs declared facts only · default_active_state declared
-failure_modes: keys are declared state names · default_active_state excluded
-binary:       responds to 'validate' · responds to 'probe' for each declared fact
+facts:        types resolve, healthy refs declared facts
+states:       when: refs declared facts only, default_active_state declared
+failure_modes: keys are declared state names, default_active_state excluded
+binary:       responds to 'validate', responds to 'probe' for each declared fact
 ```
 
-### 10.5 The Kubernetes Provider as Reference
+### 10.5 Reference Provider
 
-The kubernetes provider is the reference implementation for provider authors.
-It demonstrates the full lifecycle: vocabulary declaration, Go binary
-implementing the protocol, install hook, and test coverage.
-
-```
-mgtt-provider-kubernetes/         (github.com/mgt-tool/mgtt-provider-kubernetes)
-├── provider.yaml                 vocabulary meta, auth, variables
-├── types/*.yaml                  one file per component type
-├── hooks/install.sh              go build -o bin/mgtt-provider-kubernetes .
-├── go.mod                        imports only stdlib + encoding/json + os/exec
-├── main.go                       probe/validate/describe handlers
-└── bin/
-    └── mgtt-provider-kubernetes  compiled binary
-```
-
-Provider authors study this provider's source and adapt the pattern for
-their technology.
+The reference provider is `mgtt-provider-kubernetes`
+(`github.com/mgt-tool/mgtt-provider-kubernetes`). It uses the multi-file
+`types/*.yaml` layout and demonstrates the full lifecycle: vocabulary
+declaration, Go binary implementing the protocol, install hook, and test
+coverage.
 
 ---
 
@@ -1054,9 +987,9 @@ owns the credentials.
 ### 11.1 The Three Layers
 
 ```
-mgtt core      →   reasoning engine, never touches credentials
-provider       →   declares auth requirements, executes probes
-environment    →   owns credentials (env vars, files, instance roles)
+mgtt core      ->   reasoning engine, never touches credentials
+provider       ->   declares auth requirements, executes probes
+environment    ->   owns credentials (env vars, files, instance roles)
 ```
 
 ### 11.2 Provider Auth Declaration
@@ -1097,32 +1030,27 @@ auth:
 ### 11.3 Probe Execution Modes
 
 All modes feed the same engine — it receives a typed fact value either way.
-The constraint engine and CLI never know which mode produced a fact. This
-single contract is what allows simulation, fixture testing, shell commands,
-and provider binaries to coexist.
+The constraint engine and CLI never know which mode produced a fact.
 
 **Provider binary (primary)** — mgtt calls the provider's binary via the
 protocol defined in §8.2.2. The binary handles authentication, connection,
-parsing, and type conversion internally. This is the normal production path
-for any provider that has a compiled binary.
+parsing, and type conversion internally.
 
-**Shell fallback** — for providers without a binary (or when prototyping),
-mgtt executes the `probe.cmd` template from provider.yaml directly in the
-local shell environment. Works wherever the engineer has credentials
-configured. Simpler but fragile — no type safety, no error recovery.
+**Shell fallback** — for providers without a binary, mgtt executes the
+`probe.cmd` template from provider.yaml directly in the local shell
+environment.
 
-**Fixture mode** — for testing. `$MGTT_FIXTURES` points to a YAML file with
-canned probe outputs. No credentials, no binary, no shell. The parse
-pipeline still runs so parse bugs surface in test and production identically.
+**Fixture mode** — `$MGTT_FIXTURES` points to a YAML file with canned probe
+outputs. No credentials, no binary, no shell. The parse pipeline still runs.
 
 **Simulation** — fact values injected directly from scenario YAML. No probes
 run at all. Tests the engine's reasoning, not the system.
 
 ```
-provider binary     →   production probing, proper types, auth handled
-shell fallback      →   prototyping, simple providers, no binary needed
-fixture mode        →   deterministic testing, golden files
-simulation          →   design-time model validation, CI
+provider binary     ->   production probing, proper types, auth handled
+shell fallback      ->   prototyping, simple providers, no binary needed
+fixture mode        ->   deterministic testing, golden files
+simulation          ->   design-time model validation, CI
 ```
 
 ### 11.4 What `mgtt` Never Does
@@ -1141,9 +1069,9 @@ simulation          →   design-time model validation, CI
 `mgtt` generates the state machine from:
 
 ```
-provider state definitions   →   per-component observable states
-dependency graph             →   structural composition
-while conditions             →   activation rules
+provider state definitions   ->   per-component observable states
+dependency graph             ->   structural composition
+while conditions             ->   activation rules
 ```
 
 Never authored. Never persisted. Never manually advanced.
@@ -1165,7 +1093,7 @@ states:
           - upstream_count >= 0
 ```
 
-Overrides are additive. Base machine still derived first.
+Overrides are additive. The base machine is still derived first.
 
 ---
 
@@ -1266,37 +1194,11 @@ autonomous    AI drives the full loop, human gets report at end
               not recommended for production systems
 ```
 
-### 13.4 A Full AI Loop
-
-```
-AI calls:     plan {}
-`mgtt` returns: entry nginx · 3 paths · suggested: nginx.upstream_count · low
-
-AI:           assist + low + read-only → run
-AI calls:     probe { component: "nginx", fact: "upstream_count" }
-`mgtt` returns: upstream_count=0 · following inward · new suggestion
-
-AI:           assist + low + read-only → run
-AI calls:     probe { component: "api", fact: "endpoints" }
-`mgtt` returns: endpoints=0 · PATH A confirmed · PATH C eliminated
-
-AI:           assist + low + read-only → run
-AI calls:     probe { component: "api", fact: "restart_count" }
-`mgtt` returns: restart_count=47 · api.state: degraded · root cause identified
-
-AI reports:   "api is crash-looping (47 restarts, 0/3 replicas).
-               rds is healthy and eliminated.
-               Check api logs for startup errors."
-```
-
 ---
 
 ## 14. CLI
 
-The CLI follows the ergonomics of docker. Discoverable, scannable,
-`--help` always complete. Designed for zero cognitive load during incidents.
-
-### 14.1 Incident (primary workflow)
+### 14.1 Incident
 
 ```bash
 mgtt incident start                   # start incident, auto-generate id
@@ -1307,7 +1209,7 @@ mgtt incident load <file>             # load state file for handoff
 mgtt incident summary                 # current status, findings, duration
 ```
 
-### 14.2 Planning (the core loop)
+### 14.2 Planning
 
 ```bash
 mgtt plan                             # start from outermost component
@@ -1316,7 +1218,7 @@ mgtt plan --component api             # start from known-bad component
 
 `mgtt plan` is interactive. After showing the path tree and suggested probe
 it prompts for confirmation. After confirmation it runs the probe, appends
-the fact, and presents the updated plan. The engineer presses Y repeatedly.
+the fact, and presents the updated plan.
 
 ### 14.3 Probing
 
@@ -1325,9 +1227,6 @@ mgtt probe <component>                # run all probes for component
 mgtt probe <component> <fact>         # run one specific probe
 mgtt probe skip <component> <fact>    # skip with optional reason
 ```
-
-Probes are normally invoked by `mgtt plan`. Direct invocation for manual
-workflows or when the suggested probe isn't the right one.
 
 ### 14.4 Facts
 
@@ -1352,15 +1251,12 @@ mgtt ls components                    # same
 mgtt state                            # current state + derived machine (read-only)
 ```
 
-### 14.6 Simulation (design-time)
+### 14.6 Simulation
 
 ```bash
 mgtt simulate --scenario <file>       # run one scenario
 mgtt simulate --all                   # run all scenarios in scenarios/
 ```
-
-Simulation injects facts and asserts constraint engine conclusions.
-No running system or credentials required.
 
 ### 14.7 Model
 
@@ -1369,7 +1265,7 @@ mgtt init                             # scaffold blank system.model.yaml
 mgtt model validate                   # validate with correction suggestions
 ```
 
-### 14.7 Providers (authoring toolchain)
+### 14.8 Providers
 
 ```bash
 mgtt provider ls                      # installed providers
@@ -1387,25 +1283,20 @@ mgtt stdlib inspect <type>            # full stdlib type definition
 
 ---
 
-## 15. Design-Time Workflow — Simulation
+## 15. Simulation
 
-`mgtt` provides value before a system is deployed. Writing `system.model.yaml`
-forces explicit decisions about components, dependencies, and failure modes.
+`mgtt` provides value at design time. Writing `system.model.yaml` forces
+explicit decisions about components, dependencies, and failure modes.
 Simulation validates that the constraint engine reasons correctly over those
-decisions — before any real system exists.
-
-**What simulation tests:**
+decisions.
 
 Simulation tests the model's reasoning, not the system's behaviour. A passing
-simulation means: if a component reports these facts, the engine will guide
-you correctly. It says nothing about whether or how the component will
-actually fail. This is the same scope as a unit test — it tests the thing
-it tests, nothing more.
+simulation means: if a component reports these facts, the engine guides
+correctly. It says nothing about whether the component will actually fail.
 
-The invariants (`while`, `healthy` conditions) are already validated
-statically by `mgtt model validate`. Simulation validates the traversal —
-given these facts, does the engine find the right root cause in the right
-order?
+`mgtt model validate` covers static correctness of invariants (`while`,
+`healthy`). Simulation covers traversal — given these facts, does the engine
+find the right root cause in the right order?
 
 ### 15.1 Scenarios
 
@@ -1435,76 +1326,17 @@ expect:
   eliminated: [frontend]
 ```
 
-```yaml
-# scenarios/api-crash-loop.yaml
-
-name:        api crash-loop, rds healthy
-description: >
-  verifies rds is correctly eliminated when api is degraded
-  but rds probes return healthy values.
-
-inject:
-  api:
-    ready_replicas:   0
-    restart_count:    24
-    desired_replicas: 3
-  rds:
-    available:        true
-    connection_count: 120
-
-expect:
-  root_cause: api
-  path:       [nginx, api]
-  eliminated: [rds, frontend]
-```
-
 ### 15.2 Running Simulations
 
 ```bash
 mgtt simulate --scenario scenarios/rds-unavailable.yaml
-mgtt simulate --all                   # run all scenarios in scenarios/
+mgtt simulate --all
 ```
 
-Output:
-
-```
-$ mgtt simulate --scenario scenarios/rds-unavailable.yaml
-
-  scenario  rds unavailable
-  mode      simulation — no real system contacted
-
-  injecting facts:
-    rds.available         = false
-    rds.connection_count  = 0
-    api.ready_replicas    = 0
-    api.restart_count     = 12
-    api.desired_replicas  = 3
-
-  constraint engine result:
-
-  ✓ root_cause  rds        (expected: rds)
-  ✓ path        nginx ← api ← rds  (expected)
-  ✓ eliminated  frontend   (expected)
-
-  scenario passed
-```
-
-```
-$ mgtt simulate --all
-
-  rds-unavailable       ✓ passed
-  api-crash-loop        ✓ passed
-  frontend-oom          ✗ failed
-    expected root_cause: frontend
-    got:     no root cause — frontend.state could not be resolved
-    reason:  no fact declared that signals frontend oom state
-             add restart_count or memory_used to frontend type facts
-
-  2/3 scenarios passed
-```
-
-Failures mean the model is incomplete for that specific traversal — not
-that the system is broken. Fix the model until the scenario passes.
+`mgtt simulate` injects the scenario's facts, runs the constraint engine,
+and compares the computed root cause, path, and eliminated components
+against the `expect` block. Each scenario passes or fails with diagnostics
+pointing to the model fact or state that caused the mismatch.
 
 ### 15.3 Simulation in CI
 
@@ -1519,27 +1351,21 @@ that the system is broken. Fix the model until the scenario passes.
 ```
 
 No running system. No credentials. Pure constraint engine evaluation.
-Catches model regressions before they become incident blind spots.
 
 ### 15.4 Simulation vs Reality
 
 ```
-mgtt model validate    →  invariant expressions syntactically valid
-                           no contradictions or tautologies
-                           static analysis, no facts needed
+mgtt model validate    ->  invariant expressions syntactically valid
+                            no contradictions or tautologies
+                            static analysis, no facts needed
 
-mgtt simulate          →  traversal behaves as expected
-                           given these facts, engine finds this root cause
-                           tests the wiring, not the system
+mgtt simulate          ->  traversal behaves as expected
+                            given these facts, engine finds this root cause
+                            tests the wiring, not the system
 
-real incident          →  everything else
-                           novel failures, unpredicted combinations,
-                           things nobody modelled
-                           simulation makes no claims here
+real incident          ->  everything else
+                            novel failures, unpredicted combinations
 ```
-
-Simulation is coverage of the model's reasoning, not coverage of the
-system. A passing simulation is not a guarantee of detection.
 
 ---
 
@@ -1554,11 +1380,10 @@ system. A passing simulation is not a guarantee of detection.
 - **State is observed, not declared.** Component states derive from facts
   automatically. Engineers never set or advance state.
 - **Stdlib is primitives only.** Higher-level types belong in providers.
-  Prevents semantic collision across the ecosystem.
 - **Credentials belong to the environment.** `mgtt` never stores, manages,
   or transmits credentials. Same model as Terraform.
-- **Providers are self-contained.** In v1.0, providers depend only on
-  the mgtt stdlib. No provider-to-provider dependencies.
+- **Providers are self-contained and external.** Each provider lives in its
+  own git repository. In v1.0, providers depend only on the mgtt stdlib.
 - **AI friendly, not AI dependent.** MCP makes `mgtt` callable by any LLM.
   The constraint engine reasons — the AI drives the loop.
 - **Append only.** The fact store is a record, not a scratchpad.
@@ -1566,45 +1391,8 @@ system. A passing simulation is not a guarantee of detection.
   fresh. Only observations and current position stored.
 - **Engine is pure.** The constraint engine has no I/O, no probe execution,
   no credential access, no filesystem operations. It takes a model, providers,
-  and facts as input and returns a failure path tree. This is what makes the
-  same engine callable from the CLI, simulation runner, and MCP service
-  without branching — only the source of facts differs.
+  and facts as input and returns a failure path tree. The same engine is
+  callable from the CLI, simulation runner, and MCP service — only the source
+  of facts differs.
 - **Guided, not automated.** `mgtt` tells you what to check next and why.
   Human or AI decides whether to check it.
-
----
-
-## 17. Open Questions
-
-1. **Model drift** — no automated comparison of model to live system in v1.0.
-   Engineers add missing components manually when dead-end detection fires.
-   A `mgtt model check --against kubernetes` linter is the right post-v1.0
-   addition — validates the model against live state without generating it.
-
-2. **Incident corpus** — anonymized state files are a valuable community
-   artifact. Contribution and storage mechanism unspecified.
-
-3. **Constraint engine reference implementation** — algorithm specified
-   (arc consistency, information gain ranking), not yet implemented.
-   Required before providers can be validated against it.
-
-4. **Probability model** — information gain ranking without probabilities
-   is a known approximation. Bayesian layer deferred to post-v1.0.
-
-5. **MCP service authentication** — how an AI agent is authorised to call
-   `mgtt` tools over MCP is separate from provider authentication. Unspecified.
-
-6. **Cross-provider type references** — deferred to post-v1.0. Requires
-   provider dependency graph and version conflict resolution.
-
-7. **Healthy override semantics** — component-level `healthy` replaces
-   the provider list entirely. Additive `healthy_also` deferred to post-v1.0.
-
-8. **Probe shell safety** — commands restricted to pipes in v1.0. Richer
-   sandboxing (seccomp, containerisation) needed for untrusted providers.
-
----
-
-*`mgtt` is open to the world. Providers, incident corpora, and tooling
-contributions are welcome. The spec and core are the only things under
-tight governance. Everything else belongs to the community.*
