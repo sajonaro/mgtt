@@ -174,7 +174,7 @@ func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
 		return ex, nil
 	}
 
-	runners := map[string]*probe.ExternalRunner{}
+	runners := map[string]probe.Executor{}
 	for _, p := range reg.All() {
 		if p.Meta.Command != "" {
 			runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
