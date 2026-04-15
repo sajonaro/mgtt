@@ -104,8 +104,13 @@ func TestRun_ExtraFlagsParsedIntoRequest(t *testing.T) {
 	if code != 0 {
 		t.Fatal(stderr.String())
 	}
-	if captured.Namespace != "prod" {
+	// Namespace is an accessor over Extra["namespace"] — core does not
+	// default it, so "prod" is expected here.
+	if captured.Namespace() != "prod" {
 		t.Fatalf("namespace not parsed: %+v", captured)
+	}
+	if captured.Extra["namespace"] != "prod" {
+		t.Fatalf("namespace not in Extra: %+v", captured.Extra)
 	}
 	if captured.Extra["region"] != "us-west-2" {
 		t.Fatalf("region not parsed: %+v", captured.Extra)

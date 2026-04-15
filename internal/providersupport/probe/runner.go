@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -22,7 +23,10 @@ type ExternalRunner struct {
 	Binary string
 }
 
-func NewExternalRunner(binary string) *ExternalRunner {
+// NewExternalRunner returns an Executor that shells out to the given
+// provider runner binary. The return type is the Executor interface (not
+// the concrete struct) so callers cannot depend on internal layout.
+func NewExternalRunner(binary string) Executor {
 	return &ExternalRunner{Binary: binary}
 }
 
@@ -44,6 +48,12 @@ func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (res Result, err 
 	defer cancel()
 
 	c := exec.CommandContext(ctx, r.Binary, args...)
+	// Put the child in its own process group so we can kill the entire
+	// subtree on timeout. exec.CommandContext only kills the direct child;
+	// real provider runners fork kubectl/aws/etc., which would orphan.
+	setProcessGroup(c)
+	c.Cancel = func() error { return killProcessGroup(c) }
+
 	var stderr strings.Builder
 	c.Stderr = &stderr
 	stdout, runErr := c.Output()
@@ -56,7 +66,7 @@ func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (res Result, err 
 		if errors.As(runErr, &exitErr) {
 			return Result{}, ClassifyExit(exitErr.ExitCode(), stderr.String())
 		}
-		return Result{}, fmt.Errorf("%w: runner %s: %v", ErrEnv, r.Binary, runErr)
+		return Result{}, fmt.Errorf("%w: runner %s: %w", ErrEnv, r.Binary, runErr)
 	}
 
 	if len(stdout) > maxStdoutBytes {
@@ -70,12 +80,38 @@ func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (res Result, err 
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(stdout, &rr); err != nil {
-		return Result{}, fmt.Errorf("%w: parse runner %s output: %v", ErrProtocol, r.Binary, err)
+		return Result{}, fmt.Errorf("%w: parse runner %s output: %w", ErrProtocol, r.Binary, err)
 	}
-	if rr.Status == "" {
+	// Whitelist status values. Omitted defaults to ok (back-compat with
+	// pre-1.1 providers). Anything else is a protocol violation.
+	switch rr.Status {
+	case "":
 		rr.Status = StatusOk
+	case StatusOk, StatusNotFound:
+		// accepted
+	default:
+		return Result{}, fmt.Errorf("%w: runner %s returned unknown status %q",
+			ErrProtocol, r.Binary, rr.Status)
 	}
 	return Result{Raw: rr.Raw, Parsed: rr.Value, Status: rr.Status}, nil
+}
+
+// setProcessGroup places the child in a new process group so killing the
+// group kills all descendants. Unix-only; Windows would need JobObject.
+func setProcessGroup(c *exec.Cmd) {
+	if c.SysProcAttr == nil {
+		c.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	c.SysProcAttr.Setpgid = true
+}
+
+// killProcessGroup sends SIGKILL to the child's entire process group.
+func killProcessGroup(c *exec.Cmd) error {
+	if c.Process == nil {
+		return nil
+	}
+	// Negative PID = process group; we set Setpgid above so pgid == pid.
+	return syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
 }
 
 // buildArgs constructs the runner argv per the probe protocol:

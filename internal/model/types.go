@@ -23,7 +23,7 @@ type Meta struct {
 type Component struct {
 	Name         string
 	Type         string
-	Providers    []string            // nil → inherit Meta.Providers
+	Providers    []string // nil → inherit Meta.Providers
 	Depends      []Dependency
 	HealthyRaw   []string            // raw expression strings, compiled in Phase 2
 	Healthy      []expr.Node         // compiled from HealthyRaw

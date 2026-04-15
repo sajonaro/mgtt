@@ -42,12 +42,12 @@ func TestClassifyExit_TrimsToFirstLine(t *testing.T) {
 
 func TestFirstLine(t *testing.T) {
 	cases := map[string]string{
-		"hello":         "hello",
-		"hello\nworld":  "hello",
-		"  hello  ":     "hello",
-		"":              "",
-		"\nbody":        "",
-		"line\n\nlast":  "line",
+		"hello":        "hello",
+		"hello\nworld": "hello",
+		"  hello  ":    "hello",
+		"":             "",
+		"\nbody":       "",
+		"line\n\nlast": "line",
 	}
 	for in, want := range cases {
 		if got := firstLine(in); got != want {

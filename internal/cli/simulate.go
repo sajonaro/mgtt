@@ -45,7 +45,7 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load model: %w", err)
 	}
 
-	reg := providersupport.LoadAllEmbedded()
+	reg := providersupport.LoadAllForUse()
 
 	w := cmd.OutOrStdout()
 

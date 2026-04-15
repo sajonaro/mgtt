@@ -24,7 +24,7 @@ var statusCmd = &cobra.Command{
 			return fmt.Errorf("load model: %w", err)
 		}
 
-		reg := providersupport.LoadAllEmbedded()
+		reg := providersupport.LoadAllForUse()
 
 		var store *facts.Store
 		if inc, err := incident.Current(); err == nil {

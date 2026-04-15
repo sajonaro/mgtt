@@ -27,8 +27,8 @@ type Executor interface {
 // alphabetical order. Backend-specific names (namespace, region, cluster,
 // …) live in the model and provider, never in core.
 type Command struct {
-	Raw       string            // fully substituted command string
-	Parse     string            // parse mode for shell executor (int/bool/...)
+	Raw       string // fully substituted command string
+	Parse     string // parse mode for shell executor (int/bool/...)
 	Provider  string
 	Component string
 	Fact      string

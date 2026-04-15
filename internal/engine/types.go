@@ -30,5 +30,5 @@ type Probe struct {
 	Eliminates []string // path IDs
 	Cost       string
 	Access     string
-	Command    string   // raw template (pre-substitution)
+	Command    string // raw template (pre-substitution)
 }

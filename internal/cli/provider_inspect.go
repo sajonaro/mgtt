@@ -22,7 +22,7 @@ var providerInspectCmd = &cobra.Command{
 			typeName = args[1]
 		}
 
-		p, err := providersupport.LoadEmbedded(name)
+		p, err := providersupport.LoadForUse(name)
 		if err != nil {
 			return fmt.Errorf("provider %q: %w", name, err)
 		}

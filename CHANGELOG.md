@@ -4,6 +4,27 @@ All notable changes to mgtt are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-04-16
+
+Adversarial review fixes. Protocol contract and layering invariants tightened; new correctness gates.
+
+### Fixed
+
+- **Layering (SDK)** — `Request.Namespace` is no longer a reserved struct field; the SDK stopped privileging the `--namespace` flag and no longer defaults it to `"default"`. All non-`--type` flags land uniformly in `Request.Extra`. `Request.Namespace()` is now a convenience accessor over `Extra["namespace"]`.
+- **Engine** — `status: not_found` results are now recorded in the fact store with `Value: nil`. The engine's `expr` layer converts that into an `UnresolvedError` so the planner doesn't suggest the same probe in a loop.
+- **Loader** — `CheckCompatible` now gates every use-path (`plan`, `simulate`, `status`, `model validate`, `provider inspect`) via new `LoadForUse` / `LoadAllForUse` helpers. Incompatible providers can still be seen by `ls` / future `provider uninstall`.
+- **Runner** — provider runners are now started in their own process group; timeout expiry sends `SIGKILL` to the entire subtree, so forked `kubectl`/`aws`/... children don't orphan. The old test that required `exec sleep` is gone — the runner handles real forking children.
+- **Runner** — unknown `Result.Status` values (anything other than `""`, `"ok"`, `"not_found"`) are rejected with `ErrProtocol`. Previously silently coerced to `"ok"`.
+- **Fixture executor** — parse errors no longer pair with an affirmative `Status: "ok"`; the Status is left unset on the error path.
+- **Tracer** — writes to the shared stderr are now serialized under a mutex. Safe for concurrent probes.
+- **Runner constructor** — `NewExternalRunner` now returns `Executor` (the interface). No concrete type leaks from the public API.
+- **`mgtt provider validate`** now checks: absolute `meta.command` paths exist on disk; `healthy:` expressions reference declared facts; `state.when:` expressions reference declared facts; `failure_modes` keys reference declared states.
+- **Probe protocol errors** — `fmt.Errorf("%w: ... %v", ...)` paths switched to `%w` throughout so `errors.Is` chains traverse correctly.
+
+### Unchanged
+
+Wire protocol, SDK import path, and existing fixtures remain compatible. Providers built against v0.1.0 keep working; the SDK API surface is backward-compatible (removed fields have accessor replacements).
+
 ## [0.1.0] — 2026-04-16
 
 Probe protocol v1 lifted into core. Providers stop reinventing plumbing.

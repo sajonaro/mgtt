@@ -12,8 +12,8 @@ import (
 
 // rawModel is the top-level YAML structure.
 type rawModel struct {
-	Meta       rawMeta                   `yaml:"meta"`
-	Components map[string]*rawComponent  `yaml:"components"`
+	Meta       rawMeta                  `yaml:"meta"`
+	Components map[string]*rawComponent `yaml:"components"`
 }
 
 type rawMeta struct {

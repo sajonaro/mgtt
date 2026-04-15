@@ -21,6 +21,12 @@ func Main(r *Registry) {
 
 // Run is the testable core of Main. Returns the exit code per the probe
 // protocol.
+//
+// Layering invariant: Run does not privilege any flag key. `--type` is the
+// ONE reserved flag (it maps to Request.Type because the registry is keyed
+// on type). Every other --key value pair lands in Request.Extra opaquely.
+// Backend-specific keys (namespace, region, cluster, …) are not reserved
+// here; providers read them from Extra as needed.
 func Run(ctx context.Context, r *Registry, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: <runner> probe <name> <fact> [--type TYPE] [--<key> <value> ...]")
@@ -42,10 +48,9 @@ func Run(ctx context.Context, r *Registry, args []string, stdout, stderr io.Writ
 	}
 
 	req := Request{
-		Name:      args[1],
-		Fact:      args[2],
-		Namespace: "default",
-		Extra:     map[string]string{},
+		Name:  args[1],
+		Fact:  args[2],
+		Extra: map[string]string{},
 	}
 	for i := 3; i+1 < len(args); i += 2 {
 		key, val := args[i], args[i+1]
@@ -54,15 +59,11 @@ func Run(ctx context.Context, r *Registry, args []string, stdout, stderr io.Writ
 			return 1
 		}
 		k := strings.TrimPrefix(key, "--")
-		switch k {
-		case "type":
+		if k == "type" {
 			req.Type = val
-		case "namespace":
-			req.Namespace = val
-			req.Extra[k] = val
-		default:
-			req.Extra[k] = val
+			continue
 		}
+		req.Extra[k] = val
 	}
 
 	res, err := r.Probe(ctx, req)

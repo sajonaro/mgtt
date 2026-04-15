@@ -20,7 +20,7 @@ type factYAML struct {
 
 // storeYAML is the top-level YAML structure for a state file.
 type storeYAML struct {
-	Meta  StoreMeta              `yaml:"meta"`
+	Meta  StoreMeta             `yaml:"meta"`
 	Facts map[string][]factYAML `yaml:"facts"`
 }
 

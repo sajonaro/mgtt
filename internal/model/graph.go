@@ -4,9 +4,9 @@ package model
 // dependencies.  Edges run from dependent → dependency, matching the
 // "depends on" direction (nginx → frontend means nginx needs frontend).
 type depGraph struct {
-	adj     map[string][]string // name → list of names this node depends on
-	inDeg   map[string]int      // in-degree: how many nodes depend on this one
-	order   []string            // declaration order (preserved from YAML)
+	adj   map[string][]string // name → list of names this node depends on
+	inDeg map[string]int      // in-degree: how many nodes depend on this one
+	order []string            // declaration order (preserved from YAML)
 }
 
 // NewDepGraph constructs a depGraph from the component map and declaration
