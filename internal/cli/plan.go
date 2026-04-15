@@ -56,7 +56,7 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load model: %w", err)
 	}
 
-	reg := providersupport.LoadAllEmbedded()
+	reg := providersupport.LoadAllForUse()
 
 	executor, err := buildExecutor(reg)
 	if err != nil {
@@ -136,11 +136,22 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			break
 		}
 
-		// not_found: the underlying resource is missing. Surface the fact name
-		// and resource so the operator sees the actionable signal, then move on
-		// to the next probe step rather than storing a misleading nil value.
+		// not_found: the underlying resource is missing. Surface it to the
+		// operator AND record the fact with a nil value so the engine's expr
+		// layer produces an UnresolvedError on the next iteration — preventing
+		// the planner from suggesting the same probe in a loop.
 		if result.Status == probe.StatusNotFound {
 			fmt.Fprintf(w, "\n  resource not found: %s.%s\n", s.Component, s.Fact)
+			store.Append(s.Component, facts.Fact{
+				Key:       s.Fact,
+				Value:     nil,
+				Collector: "probe",
+				At:        time.Now(),
+				Note:      "not_found",
+			})
+			if store.IsDiskBacked() {
+				_ = store.Save()
+			}
 			continue
 		}
 
@@ -188,11 +199,8 @@ func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
 		if p.Meta.Command == "" {
 			continue
 		}
-		// Refuse to invoke incompatible providers; they remain loaded so
-		// `provider ls` and `provider uninstall` still work.
-		if err := p.CheckCompatible(); err != nil {
-			return nil, fmt.Errorf("provider %q: %w", p.Meta.Name, err)
-		}
+		// Registry was built via LoadAllForUse at the call site, so
+		// CheckCompatible has already been run. No need to re-gate here.
 		runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
 	}
 	if len(runners) == 0 {

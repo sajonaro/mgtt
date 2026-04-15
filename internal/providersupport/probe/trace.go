@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
 // Tracer emits one line per probe invocation when enabled. It honors the
-// MGTT_DEBUG=1 environment variable.
+// MGTT_DEBUG=1 environment variable. The internal mutex serializes writes
+// to W so concurrent probes don't interleave lines.
 //
 // Layering invariant: the trace format MUST NOT name backend-specific keys
 // (namespace, region, cluster, …). It prints counts of Vars and Extra; the
@@ -18,6 +20,7 @@ import (
 type Tracer struct {
 	Enabled bool
 	W       io.Writer
+	mu      sync.Mutex
 }
 
 // NewTracer reads MGTT_DEBUG and returns a Tracer that writes to stderr.
@@ -45,13 +48,20 @@ func tracerFrom(ctx context.Context) *Tracer {
 	return nil
 }
 
+// write serializes a single formatted line to W.
+func (t *Tracer) write(format string, args ...any) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	fmt.Fprintf(t.W, format, args...)
+}
+
 // TraceStart emits one line at probe invocation.
 func TraceStart(ctx context.Context, binary string, cmd Command) {
 	t := tracerFrom(ctx)
 	if t == nil || !t.Enabled {
 		return
 	}
-	fmt.Fprintf(t.W, "[mgtt %s] probe start: %s %s.%s (type=%s vars=%d extra=%d)\n",
+	t.write("[mgtt %s] probe start: %s %s.%s (type=%s vars=%d extra=%d)\n",
 		time.Now().Format("15:04:05.000"), binary, cmd.Component, cmd.Fact, cmd.Type,
 		len(cmd.Vars), len(cmd.Extra))
 }
@@ -63,10 +73,10 @@ func TraceEnd(ctx context.Context, binary string, res Result, err error) {
 		return
 	}
 	if err != nil {
-		fmt.Fprintf(t.W, "[mgtt %s] probe end: %s err=%v\n",
+		t.write("[mgtt %s] probe end: %s err=%v\n",
 			time.Now().Format("15:04:05.000"), binary, err)
 		return
 	}
-	fmt.Fprintf(t.W, "[mgtt %s] probe end: %s status=%s parsed=%v\n",
+	t.write("[mgtt %s] probe end: %s status=%s parsed=%v\n",
 		time.Now().Format("15:04:05.000"), binary, res.Status, res.Parsed)
 }

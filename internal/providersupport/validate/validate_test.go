@@ -20,7 +20,9 @@ const minimalOK = `
 meta:
   name: x
   version: 1.0.0
-  command: "/tmp/x"
+  # Non-absolute path — the disk-existence check skips this form because
+  # it's an install-time template. Absolute paths get checked.
+  command: "bin/x"
 auth:
   strategy: environment
   access:
@@ -101,6 +103,39 @@ func TestStatic_WarnsWhenParseEmpty(t *testing.T) {
 	r := Static(loadYAML(t, src))
 	if !containsAny(r.Warnings, "probe.parse empty") {
 		t.Fatalf("expected parse warning: %+v", r.Warnings)
+	}
+}
+
+func TestStatic_FailsOnMissingCommandBinary(t *testing.T) {
+	src := strings.Replace(minimalOK, `command: "bin/x"`, `command: "/nonexistent/path/xyz"`, 1)
+	r := Static(loadYAML(t, src))
+	if r.OK() {
+		t.Fatal("absolute command path pointing nowhere should fail")
+	}
+	if !containsAny(r.Failures, "does not exist on disk") {
+		t.Fatalf("failure should mention missing binary: %+v", r.Failures)
+	}
+}
+
+func TestStatic_FailsOnUndeclaredFactInHealthy(t *testing.T) {
+	src := strings.Replace(minimalOK, `- "f > 0"`, `- "ghost_fact > 0"`, 1)
+	r := Static(loadYAML(t, src))
+	if r.OK() {
+		t.Fatal("healthy referencing undeclared fact should fail")
+	}
+	if !containsAny(r.Failures, "ghost_fact") {
+		t.Fatalf("failure should name the undeclared fact: %+v", r.Failures)
+	}
+}
+
+func TestStatic_FailsOnUndeclaredFactInStateWhen(t *testing.T) {
+	src := strings.Replace(minimalOK, `when: "f > 0"`, `when: "phantom > 0"`, 1)
+	r := Static(loadYAML(t, src))
+	if r.OK() {
+		t.Fatal("state.when referencing undeclared fact should fail")
+	}
+	if !containsAny(r.Failures, "phantom") {
+		t.Fatalf("failure should name the undeclared fact: %+v", r.Failures)
 	}
 }
 

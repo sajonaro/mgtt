@@ -54,9 +54,18 @@ func (s *Store) IsDiskBacked() bool {
 
 // LookupValue satisfies expr.FactLookup. Returns the latest value for
 // (component, key) and whether such a fact exists.
+//
+// A stored fact with Value == nil is treated as "observed but unresolved"
+// — this is the not_found path: the probe executed successfully, but the
+// underlying resource is missing. The engine's expr layer converts the
+// missing return into an UnresolvedError so state derivation records it
+// and moves on to a different probe.
 func (s *Store) LookupValue(component, key string) (any, bool) {
 	f := s.Latest(component, key)
 	if f == nil {
+		return nil, false
+	}
+	if f.Value == nil {
 		return nil, false
 	}
 	return f.Value, true

@@ -6,14 +6,22 @@ import (
 	"fmt"
 )
 
-// Request is the typed input handed to a ProbeFn.
+// Request is the typed input handed to a ProbeFn. Type is reserved by the
+// protocol (it selects the registered fact set). Everything else — including
+// backend-specific keys like "namespace", "region", "cluster" — lives in
+// Extra, opaque to core. Providers use Request.Namespace() etc. accessors
+// when they need sugar, but core never privileges any key.
 type Request struct {
-	Type      string
-	Name      string
-	Namespace string            // shorthand for Extra["namespace"] when present; ProbeFns may use either
-	Fact      string
-	Extra     map[string]string // every --<key> <value> pair from the runner argv (except --type, --namespace)
+	Type  string
+	Name  string
+	Fact  string
+	Extra map[string]string // every --<key> <value> pair from the runner argv (except --type)
 }
+
+// Namespace is a convenience accessor for Extra["namespace"]. Returns ""
+// when the flag was not provided. Providers that want a different default
+// should apply it themselves — core does NOT inject one.
+func (r Request) Namespace() string { return r.Extra["namespace"] }
 
 // ProbeFn implements one fact for one type.
 type ProbeFn func(ctx context.Context, req Request) (Result, error)

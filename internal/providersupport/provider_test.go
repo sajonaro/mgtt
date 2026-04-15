@@ -529,7 +529,6 @@ func TestLoadFromDir_MultiFile(t *testing.T) {
 	}
 }
 
-
 func TestLoadFromDir_FallsBackToInlineTypes(t *testing.T) {
 	dir := t.TempDir()
 	data, err := os.ReadFile("testdata/kubernetes.yaml")
@@ -552,4 +551,3 @@ func TestLoadFromDir_FallsBackToInlineTypes(t *testing.T) {
 		t.Fatal("missing type deployment — inline types not loaded")
 	}
 }
-

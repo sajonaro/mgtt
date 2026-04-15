@@ -68,12 +68,48 @@ func ListEmbedded() []string {
 // LoadAllEmbedded returns a registry populated with every provider discovered
 // by ListEmbedded. Providers that fail to load are silently skipped; use
 // LoadEmbedded directly if you need to surface per-provider errors.
+//
+// This variant does NOT enforce meta.requires.mgtt — it's for the uninstall
+// and ls paths, where incompatible providers must still be visible.
 func LoadAllEmbedded() *Registry {
 	reg := NewRegistry()
 	for _, name := range ListEmbedded() {
 		if p, err := LoadEmbedded(name); err == nil {
 			reg.Register(p)
 		}
+	}
+	return reg
+}
+
+// LoadForUse is the version-gated loader every non-uninstall/ls caller MUST
+// use. It loads the provider and runs CheckCompatible; an incompatible
+// provider returns an error so callers don't evaluate stale protocol-format
+// expressions or invoke an incompatible runner.
+func LoadForUse(name string) (*Provider, error) {
+	p, err := LoadEmbedded(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.CheckCompatible(); err != nil {
+		return nil, fmt.Errorf("provider %q: %w", name, err)
+	}
+	return p, nil
+}
+
+// LoadAllForUse returns a registry of every discovered provider, filtering
+// out those that fail CheckCompatible. Incompatible providers are silently
+// dropped — use LoadForUse on a specific name if you need the error.
+func LoadAllForUse() *Registry {
+	reg := NewRegistry()
+	for _, name := range ListEmbedded() {
+		p, err := LoadEmbedded(name)
+		if err != nil {
+			continue
+		}
+		if err := p.CheckCompatible(); err != nil {
+			continue
+		}
+		reg.Register(p)
 	}
 	return reg
 }

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v3"
 	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
+	"gopkg.in/yaml.v3"
 )
 
 // fixtureEntry holds the raw stdout and exit code for a single probe.
@@ -71,7 +71,9 @@ func (e *Executor) Run(_ context.Context, cmd probe.Command) (probe.Result, erro
 	}
 	parsed, err := probe.ParseOutput(cmd.Parse, entry.Stdout, entry.Exit)
 	if err != nil {
-		return probe.Result{Raw: entry.Stdout, Status: probe.StatusOk}, err
+		// Parse failed — leave Status unset. Claiming "ok" alongside a
+		// non-nil error would be an affirmative claim we cannot back up.
+		return probe.Result{Raw: entry.Stdout}, err
 	}
 	return probe.Result{Raw: entry.Stdout, Parsed: parsed, Status: probe.StatusOk}, nil
 }

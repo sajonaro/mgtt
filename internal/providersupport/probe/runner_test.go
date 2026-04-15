@@ -91,10 +91,12 @@ func TestExternalRunner_ClassifyEnv(t *testing.T) {
 func TestExternalRunner_Timeout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "slow-runner")
-	// `exec sleep` replaces the shell so SIGKILL on context expiry hits the
-	// sleep directly; otherwise sh forks and Output() waits for the orphaned
-	// child to finish.
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexec sleep 10\n"), 0o755); err != nil {
+	// Real provider runners fork child processes (sh → kubectl → …). Without
+	// process-group killing, exec.CommandContext only kills sh; the grandchild
+	// sleep keeps running and Output() hangs on its stdout pipe. This script
+	// does NOT use `exec sleep`, so sh forks a sleep child — the scenario the
+	// process-group kill actually needs to handle.
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nsleep 10\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	r := NewExternalRunner(path)
@@ -108,7 +110,7 @@ func TestExternalRunner_Timeout(t *testing.T) {
 		t.Fatalf("want ErrTransient, got %v", err)
 	}
 	if elapsed > 2*time.Second {
-		t.Fatalf("runner ignored timeout; elapsed %v", elapsed)
+		t.Fatalf("runner ignored timeout; elapsed %v — process group kill is not working", elapsed)
 	}
 }
 
@@ -118,6 +120,15 @@ func TestExternalRunner_ProtocolErrorOnBadJSON(t *testing.T) {
 	_, err := r.Run(context.Background(), Command{})
 	if !errors.Is(err, ErrProtocol) {
 		t.Fatalf("want ErrProtocol, got %v", err)
+	}
+}
+
+func TestExternalRunner_RejectsUnknownStatus(t *testing.T) {
+	bin := writeFakeRunner(t, `{"value":1,"raw":"1","status":"garbage"}`, "", 0)
+	r := NewExternalRunner(bin)
+	_, err := r.Run(context.Background(), Command{})
+	if !errors.Is(err, ErrProtocol) {
+		t.Fatalf("unknown status must be ErrProtocol, got %v", err)
 	}
 }
 

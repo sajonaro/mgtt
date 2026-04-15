@@ -32,7 +32,7 @@ var modelValidateCmd = &cobra.Command{
 			return err
 		}
 
-		reg := providersupport.LoadAllEmbedded()
+		reg := providersupport.LoadAllForUse()
 
 		result := model.Validate(m, reg)
 
