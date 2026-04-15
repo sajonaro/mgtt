@@ -185,9 +185,15 @@ func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
 
 	runners := map[string]probe.Executor{}
 	for _, p := range reg.All() {
-		if p.Meta.Command != "" {
-			runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
+		if p.Meta.Command == "" {
+			continue
 		}
+		// Refuse to invoke incompatible providers; they remain loaded so
+		// `provider ls` and `provider uninstall` still work.
+		if err := p.CheckCompatible(); err != nil {
+			return nil, fmt.Errorf("provider %q: %w", p.Meta.Name, err)
+		}
+		runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
 	}
 	if len(runners) == 0 {
 		return probeexec.Default(), nil
