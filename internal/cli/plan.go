@@ -121,7 +121,8 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
 			break
 		}
-		result, err := executor.Run(context.Background(), probe.Command{
+		ctx := probe.WithTracer(context.Background(), probe.NewTracer())
+		result, err := executor.Run(ctx, probe.Command{
 			Raw:       rendered,
 			Parse:     s.ParseMode,
 			Provider:  s.Provider,

@@ -27,7 +27,10 @@ func NewExternalRunner(binary string) *ExternalRunner {
 }
 
 // Run implements Executor.
-func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (Result, error) {
+func (r *ExternalRunner) Run(ctx context.Context, cmd Command) (res Result, err error) {
+	TraceStart(ctx, r.Binary, cmd)
+	defer func() { TraceEnd(ctx, r.Binary, res, err) }()
+
 	args, err := buildArgs(cmd)
 	if err != nil {
 		return Result{}, err
