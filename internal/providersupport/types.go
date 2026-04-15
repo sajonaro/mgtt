@@ -18,8 +18,9 @@ type ProviderMeta struct {
 	Name        string
 	Version     string
 	Description string
-	Tags        []string // loose subject/topic labels — what the provider is about
-	Command     string   // path to provider binary; may contain $MGTT_PROVIDER_DIR
+	Tags        []string          // loose subject/topic labels — what the provider is about
+	Command     string            // path to provider binary; may contain $MGTT_PROVIDER_DIR
+	Requires    map[string]string // dependency constraints, e.g. {"mgtt": ">=0.1.0"}
 }
 
 type ProviderHooks struct {
