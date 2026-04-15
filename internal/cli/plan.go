@@ -121,7 +121,8 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(w, "\n  probe rejected: %v\n", err)
 			break
 		}
-		result, err := executor.Run(context.Background(), probe.Command{
+		ctx := probe.WithTracer(context.Background(), probe.NewTracer())
+		result, err := executor.Run(ctx, probe.Command{
 			Raw:       rendered,
 			Parse:     s.ParseMode,
 			Provider:  s.Provider,
@@ -133,6 +134,14 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			fmt.Fprintf(w, "\n  probe error: %v\n", err)
 			break
+		}
+
+		// not_found: the underlying resource is missing. Surface the fact name
+		// and resource so the operator sees the actionable signal, then move on
+		// to the next probe step rather than storing a misleading nil value.
+		if result.Status == probe.StatusNotFound {
+			fmt.Fprintf(w, "\n  resource not found: %s.%s\n", s.Component, s.Fact)
+			continue
 		}
 
 		// Store the fact.
@@ -174,11 +183,17 @@ func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
 		return ex, nil
 	}
 
-	runners := map[string]*probe.ExternalRunner{}
+	runners := map[string]probe.Executor{}
 	for _, p := range reg.All() {
-		if p.Meta.Command != "" {
-			runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
+		if p.Meta.Command == "" {
+			continue
 		}
+		// Refuse to invoke incompatible providers; they remain loaded so
+		// `provider ls` and `provider uninstall` still work.
+		if err := p.CheckCompatible(); err != nil {
+			return nil, fmt.Errorf("provider %q: %w", p.Meta.Name, err)
+		}
+		runners[p.Meta.Name] = probe.NewExternalRunner(resolveCommand(p.Meta.Command, p.Meta.Name))
 	}
 	if len(runners) == 0 {
 		return probeexec.Default(), nil
