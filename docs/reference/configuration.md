@@ -1,8 +1,6 @@
 # Configuration Reference
 
-mgtt is configured exclusively via **environment variables** (and a small set of CLI flags that mirror the most common ones for per-invocation overrides). There is no `mgtt.config` file. This page is the canonical list — if it's not here, mgtt does not read it.
-
-The Twelve-Factor reasoning: env vars compose well with shells, container orchestrators, secrets managers, and CI systems. A single config file would be a second source of truth that drifts from the env, splits operator mental models, and tempts scope creep.
+Configure mgtt with environment variables. The most common ones also have CLI flags for per-invocation overrides.
 
 ---
 
@@ -120,7 +118,7 @@ MGTT_DEBUG=1 mgtt plan 2>&1 | grep '\[mgtt'
 [mgtt 14:22:03.598] probe end: ...kubernetes status=ok parsed=3
 ```
 
-One line per probe invocation, on stderr, with timing. Format intentionally **does not name backend keys** — only counts of `vars` and `extra` map entries — so the trace itself doesn't leak `namespace`/`region`/`cluster` vocabulary.
+One line per probe invocation, on stderr, with timing. Use this when a probe seems slow or silently wrong — you'll see exactly which provider was invoked, with what arguments shape, and what came back.
 
 ---
 
@@ -138,7 +136,7 @@ Accepts any [`time.ParseDuration`](https://pkg.go.dev/time#ParseDuration) form: 
 
 ## HTTP proxy + TLS
 
-mgtt does not implement its own HTTP stack — it uses Go's `net/http`, which honors the standard environment chain:
+The standard system env vars apply to all of mgtt's outbound traffic:
 
 | Variable | Effect |
 |---|---|
@@ -152,15 +150,14 @@ For `git clone` (used by `provider install` against URLs), proxy + TLS settings 
 
 ---
 
-## What mgtt does NOT call out to
+## Network surface (for security review)
 
-For security review:
+mgtt makes outbound calls in exactly two cases:
 
-- **No telemetry.** mgtt makes zero outbound calls except those you explicitly invoke: `provider install` (registry HTTPS + git clone), and the provider runner binaries (which call your own backend tools — kubectl, aws, terraform, …).
-- **No auto-update.** mgtt does not check for new versions on its own.
-- **No analytics.** No `mgtt --version` ping, no usage counters, no error reporters.
+1. **`mgtt provider install`** — fetches `MGTT_REGISTRY_URL` (or the URL given via `--registry`), then `git clone`s the entry's URL.
+2. **Provider probes** — the runner binaries you installed call your own backend tools (kubectl, aws, terraform, …).
 
-If your security review needs "what does this binary talk to in the worst case," the answer is exactly: `MGTT_REGISTRY_URL` (over the configured proxy), the git URLs in that registry, and whatever the operator-installed provider binaries decide to invoke.
+No telemetry. No auto-update checks. No usage counters. No error reporters.
 
 ---
 
