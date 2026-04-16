@@ -34,7 +34,7 @@ func init() {
 }
 
 // renderProviderLs writes one line per provider with a checkmark, name,
-// version, and description to w.
+// version, install method, and description to w.
 func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 	if len(providers) == 0 {
 		fmt.Fprintln(w, "  no providers installed")
@@ -44,6 +44,7 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 	// Determine column widths.
 	maxName := 0
 	maxVersion := 0
+	maxMethod := len("git") // "git" or "image"
 	for _, p := range providers {
 		if n := len(p.Meta.Name); n > maxName {
 			maxName = n
@@ -56,10 +57,23 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 
 	for _, p := range providers {
 		ver := "v" + p.Meta.Version
-		fmt.Fprintf(w, "  %s %-*s  %-*s  %s\n",
+
+		// Load install metadata to determine the install method.
+		providerDir := providersupport.ProviderDir(p.Meta.Name)
+		method := "?"
+		if providerDir != "" {
+			meta, err := providersupport.ReadInstallMeta(providerDir)
+			if err == nil {
+				method = string(meta.Method)
+			}
+			// On error: show "?" and continue (don't abort the listing)
+		}
+
+		fmt.Fprintf(w, "  %s %-*s  %-*s  %-*s  %s\n",
 			checkmark(true),
 			maxName, p.Meta.Name,
 			maxVersion, ver,
+			maxMethod, method,
 			p.Meta.Description,
 		)
 	}
