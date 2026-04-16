@@ -6,19 +6,23 @@ Configure mgtt with environment variables. The most common ones also have CLI fl
 
 ## Quick reference
 
+Click a variable name to jump to its section.
+
 | Variable | Purpose | Default |
 |---|---|---|
-| `MGTT_HOME` | Where mgtt looks for installed providers | `~/.mgtt/` |
-| `MGTT_REGISTRY_URL` | Registry index URL (or `disabled` / `none` / `off`, or `file://...`) | community registry on GitHub Pages |
-| `MGTT_FIXTURES` | Path to a fixture YAML; switches probes from real backends to recorded data | unset (use real backends) |
-| `MGTT_DEBUG` | Set to `1` to emit per-probe trace lines on stderr | unset (silent) |
-| `MGTT_PROBE_TIMEOUT` | Per-probe timeout (`time.ParseDuration` syntax — e.g. `45s`, `2m`) | runner-default 30s |
-| `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` | Standard Go HTTP proxy chain — honored by registry fetch and provider clones | unset |
-| `SSL_CERT_FILE` / `SSL_CERT_DIR` | Standard Go TLS CA bundle override | system trust store |
+| [`MGTT_HOME`](#mgtt_home) | Where mgtt looks for installed providers | `~/.mgtt/` |
+| [`MGTT_REGISTRY_URL`](#mgtt_registry_url) | Registry index URL (or `disabled` / `none` / `off`, or `file://...`) | community registry on GitHub Pages |
+| [`MGTT_FIXTURES`](#mgtt_fixtures) | Path to a fixture YAML; switches probes from real backends to recorded data | unset (use real backends) |
+| [`MGTT_DEBUG`](#mgtt_debug) | Set to `1` to emit per-probe trace lines on stderr | unset (silent) |
+| [`MGTT_PROBE_TIMEOUT`](#mgtt_probe_timeout) | Per-probe timeout (`45s`, `2m`, `1h30m`) | runner-default 30s |
+| [`HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`](#http-proxy-tls) | HTTP proxy chain — honored by registry fetch and provider clones | unset |
+| [`SSL_CERT_FILE` / `SSL_CERT_DIR`](#http-proxy-tls) | TLS CA bundle override | system trust store |
 
 ---
 
-## `MGTT_HOME` — install location
+## `MGTT_HOME`
+
+*Install location.*
 
 Where `mgtt provider install` writes provider directories, where `provider ls` / `inspect` / `validate` look them up, and where the registry-fetch cache lives (`$MGTT_HOME/cache/registry/<sha>.yaml`, keyed on the registry URL so distinct sources don't cross-contaminate).
 
@@ -37,7 +41,9 @@ Useful for: shared multi-tenant installs (point everyone at a read-only `/opt/mg
 
 ---
 
-## `MGTT_REGISTRY_URL` — alternative or no registry
+## `MGTT_REGISTRY_URL`
+
+*Alternative or no registry.*
 
 By default, `mgtt provider install <name>` resolves the name through the community registry at `https://mgt-tool.github.io/mgtt/registry.yaml`. Override it for corporate scenarios:
 
@@ -96,7 +102,9 @@ Precedence: `--registry` > `MGTT_REGISTRY_URL` > default.
 
 ---
 
-## `MGTT_FIXTURES` — record/replay mode
+## `MGTT_FIXTURES`
+
+*Record / replay mode.*
 
 Replay a recorded set of probe outputs instead of executing them against real backends. Used in CI and demos.
 
@@ -110,7 +118,9 @@ The fixture YAML maps `provider → component → fact → {stdout, exit, status
 
 ---
 
-## `MGTT_DEBUG` — probe boundary tracing
+## `MGTT_DEBUG`
+
+*Probe-boundary tracing.*
 
 ```bash
 MGTT_DEBUG=1 mgtt plan 2>&1 | grep '\[mgtt'
@@ -122,7 +132,9 @@ One line per probe invocation, on stderr, with timing. Use this when a probe see
 
 ---
 
-## `MGTT_PROBE_TIMEOUT` — per-probe timeout
+## `MGTT_PROBE_TIMEOUT`
+
+*Per-probe timeout.*
 
 Default is the runner's built-in 30s. Bump for slow backends (e.g. terraform `plan` against cloud APIs, large EKS clusters):
 
