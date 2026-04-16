@@ -91,13 +91,9 @@ mgtt plan                          # troubleshoot a live system
 
 ## For TLA+ users
 
-**mgtt is for troubleshooting live production, not proving protocols correct.** If you've written a TLA+ spec, the philosophy will feel familiar — but the job is different. TLA+ asks "is my design correct under all interleavings?" mgtt asks "my pager just went off, which of my running components is actually broken?"
+TLA+ checks your design. mgtt checks your running system.
 
-The parallel that helps: you write the spec of your system (types, states, how failures propagate) once, and *that same spec* drives two things — simulation in CI (like TLC, but against scenario injections) and live diagnosis at 3am (walking the dependency graph, probing real kubectl/AWS/docker, eliminating healthy branches). The model is the source of truth; the engine turns it into either a proof of design or a root-cause.
-
-Where the analogy ends: mgtt doesn't do exhaustive state-space exploration — it does cost-ordered live probing. Every step observes real infrastructure; every probe you *didn't* need to run is information saved. Operational concerns (probe cost, TTLs, read-only auth scope) are first-class vocabulary because the goal is to be useful in the terminal where the incident is happening, not to hand an engineer a 300-state counterexample trace at 3am.
-
-Call it "a spec that also runs a diagnostic plan against your cluster." If TLA+ is design-time correctness, mgtt is run-time localization.
+Same idea — write the spec, let the tool do the thinking — pointed at a different problem. When the pager goes off, mgtt walks your spec against the live cluster and tells you which component is broken.
 
 ## License
 
