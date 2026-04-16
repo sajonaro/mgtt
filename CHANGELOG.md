@@ -4,6 +4,14 @@ All notable changes to mgtt are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-04-16
+
+### Added
+
+- **`mgtt provider uninstall <name>`** — runs the provider's optional `hooks.uninstall` script, then removes `~/.mgtt/providers/<name>/`. Uses `LoadEmbedded` (not `LoadForUse`) so version-incompatible providers are always removable. If `provider.yaml` is malformed, the directory is still removed. If the uninstall hook fails, the directory is still removed. Tests cover all four paths.
+- **`hooks.uninstall`** field parsed from `provider.yaml` alongside `hooks.install`. Providers declare their cleanup script; mgtt wires it.
+- **Terraform provider** added to the registry (`docs/registry.yaml`).
+
 ## [0.1.2] — 2026-04-16
 
 Restores `Request.Namespace` as a struct field for SDK back-compat; v0.1.1

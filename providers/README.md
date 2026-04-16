@@ -416,6 +416,33 @@ chmod +x bin/mgtt-provider-my-provider
 echo "✓ installed Python provider"
 ```
 
+## Uninstall Hook (optional)
+
+`hooks/uninstall.sh` runs during `mgtt provider uninstall <name>`, before the
+provider directory is removed. Use it to clean up build artifacts, revoke
+credentials, deregister webhooks, etc. If the hook fails, the directory is
+still removed — uninstall must always succeed.
+
+```bash
+#!/bin/bash
+set -e
+cd "$(dirname "$0")/.."
+echo "cleaning up..."
+rm -rf bin/ .venv/
+echo "✓ cleanup complete"
+```
+
+Declare it in `provider.yaml`:
+
+```yaml
+hooks:
+  install: hooks/install.sh
+  uninstall: hooks/uninstall.sh
+```
+
+Uninstall does NOT check `meta.requires.mgtt` — you must always be able to
+remove a provider you can no longer use.
+
 ## Installing Your Provider
 
 From a local directory:

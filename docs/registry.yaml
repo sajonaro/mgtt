@@ -25,3 +25,10 @@ providers:
     description: Docker containers via docker inspect
     tags:
       - containers
+  terraform:
+    url: https://github.com/mgt-tool/mgtt-provider-terraform
+    description: Terraform-managed infrastructure — state health, drift detection, config-vs-reality reasoning
+    tags:
+      - iac
+      - terraform
+      - drift
