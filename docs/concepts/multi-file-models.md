@@ -1,118 +1,153 @@
 # Multi-File Models
 
-One system can be described by more than one model file. Each file answers one question well; when you find yourself stretching a single file to cover two unrelated concerns, that's the cue to split.
+One system, several model files. Each file is a contract for one *moment*.
 
 ## On this page
 
-- [When to split](#when-to-split)
-- [When NOT to split](#when-not-to-split)
+- [Show me](#show-me) — three tiny examples, side by side
+- [Why split at all?](#why-split-at-all)
+- [When to split](#when-to-split) — and when NOT to
 - [Naming pattern](#naming-pattern)
 - [File header convention](#file-header-convention)
 - [Switching between models](#switching-between-models)
-- [Worked example: Tempo provider](#worked-example-tempo-provider)
 
 ---
 
+## Show me
+
+Three model files for the same Magento storefront — each is a contract for one operational moment. None of them tries to do the others' job.
+
+### 1. Steady state — always loaded
+
+`magento.model.yaml`
+
+```yaml
+checkout_slo:
+  type: tracing.span_invariant
+  vars:
+    span: "checkout.init"
+    target_max: 800ms
+    target_max_error_rate: 0.001        # 0.1% errors
+    breach_tolerance_seconds: 30        # 30s sustained = page someone
+
+cart_slo:
+  type: tracing.span_invariant
+  vars:
+    span: "cart.add"
+    target_max: 500ms
+    target_max_error_rate: 0.005
+    breach_tolerance_seconds: 60
+```
+
+### 2. The deploy moment — loaded right after a blue/green switch
+
+`magento-canary.model.yaml`
+
+```yaml
+post_switch_canary:
+  type: tracing.span_invariant
+  vars:
+    span: "http.server.request"
+    span_filter: 'resource.deployment.color = "green"'   # only the new color
+    target_max: 3s                                       # cold-cache headroom
+    target_max_error_rate: 0.005                         # tighter than steady-state
+    breach_tolerance_seconds: 0                          # zero tolerance now
+```
+
+### 3. The migration window — loaded only while a schema change is in flight
+
+`magento-migration.model.yaml`
+
+```yaml
+row_count_drift:
+  type: aws.rds_query
+  vars:
+    query: "SELECT COUNT(*) FROM orders"
+    target_max_drift: 0.001              # < 0.1% row delta vs baseline
+
+terraform_drift:
+  type: terraform.resource
+  vars:
+    address: aws_db_instance.main        # config-vs-reality during the change
+```
+
+Three files, one storefront. Operators load whichever matches the moment they're in:
+
+```bash
+export MGTT_MODEL=magento.model.yaml           && mgtt plan   # 99% of the time
+export MGTT_MODEL=magento-canary.model.yaml    && mgtt plan   # post-deploy gate
+export MGTT_MODEL=magento-migration.model.yaml && mgtt plan   # during DB change
+```
+
+That's the whole pattern. Below is the rationale and the conventions.
+
+---
+
+## Why split at all?
+
+A model is a *contract* mgtt evaluates against the live system. Different operational moments call for different contracts:
+
+- The steady-state error budget is too loose for a fresh canary fleet.
+- The migration window's row-count invariant is meaningless after the migration completes.
+- Stuffing all three into one file means every probe runs all the time, and a reader can't tell which numbers are "in force" right now.
+
+Separate files = each moment gets a contract that fits it. Operators load one at a time.
+
 ## When to split
 
-Split into a separate file when the new model answers a **different question** from the existing one. Three signals that you've crossed that line:
+Split when the new file answers a **different question**. Three reliable signals:
 
-| Signal | Single file | Separate file |
+| Signal | One file | Separate files |
 |---|---|---|
-| **Operational moment** the model is right for | "All the time" — steady state | A specific window: deploy, migration, incident-response, scheduled batch |
-| **Components in scope** | The same set of components | A different slice (one team's services, one tier, one region) |
-| **Numeric SLOs** | One contract per component, evaluated continuously | Tighter or looser bounds *for the same components* during a defined event |
+| **Operational moment** | "all the time" | a specific window: deploy, migration, incident |
+| **Components in scope** | the same set | a different slice (one team, one tier, one region) |
+| **Numeric SLOs** | one contract per component | tighter or looser bounds *for the same components* during an event |
 
-Each of those is a different question. Stretching one file to cover two questions makes both answers harder to read — and surprises operators who don't know which numbers are "in force" right now.
+### When NOT to split
 
-The cleanest decomposition lines:
-
-1. **Steady-state vs deployment moment.** Steady-state SLOs aren't right during a blue/green switch — the new color is half-warm, the old color is half-going-away, and the contracts both should hold are not the same as the contracts each holds in isolation.
-2. **Run-time vs migration window.** Schema migrations, traffic shifts, region failovers — finite operations with their own invariants ("no row count drops > 0.1%", "p99 stays < 5s during shift") that aren't applicable before or after.
-3. **Tier or scope.** Platform-wide invariants live in one file; one team's service-level invariants live in their own. Both can co-exist because operators use them at different times.
-
-## When NOT to split
-
-Don't split for any of these — use one file with parameterization instead:
-
-- **Different environments** (staging vs prod). Same shape, different numbers — express via vars or per-env override files, not duplicated component definitions.
-- **One-var differences.** If file B is "file A but with `target_max: 2s` instead of `1s`," it's a var override, not a separate model.
-- **Future-tense scenarios you might want.** Don't pre-create files for cases that don't exist yet. Add a model when there's an actual moment to invoke it for.
+- **Different environments** (staging vs prod) — same shape, different numbers. Use vars or per-env override files, not duplicated component definitions.
+- **One-var differences** — if file B is "file A but with `target_max: 2s` instead of `1s`", it's a var override.
+- **Hypothetical future scenarios** — add a model when there's an actual moment to invoke it for, not before.
 
 ## Naming pattern
 
-Filenames read as noun phrases. Pattern:
+Filenames read as noun phrases:
 
 ```
-<system>.model.yaml                          # the canonical baseline
-<system>-<moment>.model.yaml                 # a specific operational window
-<system>-<scope>.model.yaml                  # a narrowed view (one team, tier, region)
+<system>.model.yaml                # the canonical baseline
+<system>-<moment>.model.yaml       # a specific operational window
+<system>-<scope>.model.yaml        # a narrowed view (one team, tier, region)
 ```
 
-Concrete:
-
-```
-magento-platform.model.yaml                  # baseline — always loaded
-magento-blue-green-canary.model.yaml         # canary — loaded right after a deploy
-magento-payment-team.model.yaml              # narrowed scope — what payment cares about
-magento-region-failover.model.yaml           # one-off — loaded during DR drills
-```
-
-The baseline file owns the unmodified system name; specialized files extend it with a hyphenated qualifier.
+The baseline owns the unmodified system name; specialized files hyphenate.
 
 ## File header convention
 
 Every model file should open with three things, in this order:
 
-1. **What question this file answers** — one sentence, in plain operator-language.
+1. **What question this file answers** — one sentence in plain operator-language.
 2. **When to invoke it** — what operational moment makes this model the right contract.
-3. **Companion models** — a one-line pointer to other files in the same directory, so a reader can navigate the family.
-
-Example header:
+3. **Companion models** — one-line pointer to siblings in the same directory, so a reader can navigate the family without consulting external docs.
 
 ```yaml
-# A real Magento storefront, observed during the *moment* of a blue/green
-# deploy — when steady-state SLOs aren't the right contract because the
-# fleet is half-warm and half-going-away.
+# Magento storefront — observed during the moment of a blue/green deploy,
+# when steady-state SLOs aren't the right contract.
 #
-# Invoke this model right after the selector flip, as the "are we OK to
-# keep going?" gate before scaling the old color down.
+# Invoke right after the selector flip, as the "are we OK to keep going?"
+# gate before scaling the old color down.
 #
 # Companion models:
-#   • magento-platform.model.yaml — steady-state SLOs (always loaded)
+#   • magento.model.yaml — steady-state SLOs (always loaded)
 ```
-
-The header carries the methodology in-file — readers don't need to consult docs to know what they're looking at.
 
 ## Switching between models
 
-`mgtt plan` and `mgtt simulate` read one model at a time, selected via `MGTT_MODEL`:
+`mgtt plan` and `mgtt simulate` read one model at a time, selected via `MGTT_MODEL`. In CI / deploy pipelines, the operational moment selects which model is in scope:
 
 ```bash
-# Steady state — what runs continuously
-export MGTT_MODEL=models/magento-platform.model.yaml
-mgtt plan
-
-# After a deploy switch — the canary contract
-export MGTT_MODEL=models/magento-blue-green-canary.model.yaml
-mgtt plan
-```
-
-In CI / deploy pipelines, the operational moment determines which `MGTT_MODEL` is in scope:
-
-```bash
-# Post-deploy hook — wait 60s for spans to land, then run the canary
+# Post-deploy hook — wait for spans to land, then run the canary contract
 sleep 60
-MGTT_MODEL=models/magento-blue-green-canary.model.yaml mgtt plan --fail-on-breach
+MGTT_MODEL=magento-canary.model.yaml mgtt plan --fail-on-breach
 ```
 
-Models don't compose at load time today — each file is read in isolation. Cross-file references are deliberate: a canary model's `depends_on` can name a `kubernetes.service` component without redefining the entire infra layer, because that component already exists in the running cluster — the model is a *view* over reality, not a definition of it.
-
-## Worked example: Tempo provider
-
-The [`mgtt-provider-tempo`](https://github.com/mgt-tool/mgtt-provider-tempo) repo ships two example models for the same Magento storefront, demonstrating the split:
-
-- [`magento-platform.model.yaml`](https://github.com/mgt-tool/mgtt-provider-tempo/blob/main/examples/magento-platform.model.yaml) — **steady-state SLOs.** Four customer-facing operations (catalog browse, add to cart, checkout init, search) each held to a three-number contract.
-- [`magento-blue-green-canary.model.yaml`](https://github.com/mgt-tool/mgtt-provider-tempo/blob/main/examples/magento-blue-green-canary.model.yaml) — **the deployment moment.** A single canary SLO using `span_filter` to scope to the just-promoted color, with depends_on across `kubernetes.*` and `tracing.*` so a stuck switch surfaces from two angles.
-
-Both files are valid models for the same system. Operators load whichever matches the moment they're in.
+Models don't compose at load time today — each file is read in isolation. Cross-file references *are* deliberate: a canary model's `depends_on` can name a `kubernetes.service` component without redefining the entire infra layer, because that component already exists in the running cluster — the model is a *view* over reality, not a definition of it.
