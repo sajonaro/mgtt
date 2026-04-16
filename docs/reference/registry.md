@@ -21,6 +21,7 @@ https://mgt-tool.github.io/mgtt/registry.yaml
 | [docker](https://github.com/sajonaro/mgtt-provider-docker) | Docker containers via docker inspect | containers | `mgtt provider install docker` |
 | [terraform](https://github.com/mgt-tool/mgtt-provider-terraform) | Terraform-managed infrastructure — state health, drift detection, config-vs-reality reasoning | iac, terraform, drift | `mgtt provider install terraform` |
 | [tempo](https://github.com/mgt-tool/mgtt-provider-tempo) | Per-span SLO checks against Grafana Tempo — current_p99, breach_duration, error_rate | tracing, otel, grafana, slo | `mgtt provider install tempo` |
+| [quickwit](https://github.com/mgt-tool/mgtt-provider-quickwit) | Cross-span tracing checks against Quickwit — transaction_flow, async_hop, consumer_health | tracing, otel, quickwit, slo, async | `mgtt provider install quickwit` |
 
 Run `mgtt provider inspect <name>` after install to see the full type catalog.
 

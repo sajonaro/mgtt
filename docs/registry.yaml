@@ -40,3 +40,12 @@ providers:
       - otel
       - grafana
       - slo
+  quickwit:
+    url: https://github.com/mgt-tool/mgtt-provider-quickwit
+    description: Cross-span tracing checks against Quickwit — transaction_flow, async_hop, consumer_health
+    tags:
+      - tracing
+      - otel
+      - quickwit
+      - slo
+      - async
