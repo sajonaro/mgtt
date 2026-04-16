@@ -2,6 +2,13 @@
 
 Your provider binary implements a simple protocol: mgtt calls it with args, it returns JSON on stdout.
 
+## On this page
+
+- [Commands](#commands) — argv, stdout, exit codes
+- [Example: Go binary](#example-go-binary)
+- [Example: Bash binary](#example-bash-binary)
+- [Next steps](#next-steps)
+
 ---
 
 ## Commands

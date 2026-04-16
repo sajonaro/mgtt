@@ -4,6 +4,15 @@ Every component in a model has a `type` — a type defined by a provider. This p
 
 Use this to write correct `inject` blocks in scenarios and `healthy` overrides in models without needing to install mgtt first.
 
+## On this page
+
+- [Kubernetes provider](#kubernetes-provider)
+- [AWS provider](#aws-provider)
+- [Docker provider (community)](#docker-provider-community)
+- [Stdlib primitive types](#stdlib-primitive-types)
+- [Standard failure mode vocabulary](#standard-failure-mode-vocabulary)
+- [When the type you need doesn't exist](#when-the-type-you-need-doesnt-exist)
+
 ---
 
 ## Kubernetes provider

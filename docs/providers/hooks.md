@@ -2,6 +2,14 @@
 
 `hooks/install.sh` runs during `mgtt provider install`. Its job: produce the provider binary.
 
+## On this page
+
+- [For Go providers](#for-go-providers)
+- [For pre-compiled binaries](#for-pre-compiled-binaries) — download & install
+- [For Python providers](#for-python-providers) — venv + wrapper
+- [Vocabulary-only providers (no hook)](#vocabulary-only-providers-no-hook)
+- [Next steps](#next-steps)
+
 ---
 
 ## For Go providers
