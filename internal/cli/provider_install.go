@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mgt-tool/mgtt/internal/providersupport"
 	"github.com/mgt-tool/mgtt/internal/registry"
@@ -23,6 +25,7 @@ var providerCmd = &cobra.Command{
 var (
 	providerInstallNoCache  bool
 	providerInstallRegistry string
+	providerInstallImage    string
 )
 
 var providerInstallCmd = &cobra.Command{
@@ -36,11 +39,31 @@ Registry resolution:
   --registry file://<path>   Load the registry from a local file (mirrored).
 
 The MGTT_REGISTRY_URL env var sets the same value persistently;
---registry overrides it per-invocation.`,
-	Args: cobra.MinimumNArgs(1),
+--registry overrides it per-invocation.
+
+Image install:
+  --image <ref>              Pull a provider image and register it locally.
+                             The ref MUST include a @sha256: digest.
+                             An optional positional arg overrides the install name.`,
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		w := cmd.OutOrStdout()
+
+		// --image takes full priority; skip all git/local/registry resolution.
+		if providerInstallImage != "" {
+			var nameHint string
+			if len(args) > 0 {
+				nameHint = args[0]
+			}
+			return installFromImage(cmd.Context(), w, providerInstallImage, nameHint, providersupport.NewDockerCmd())
+		}
+
+		// Without --image, the existing resolution chain requires at least one name.
+		if len(args) == 0 {
+			return fmt.Errorf("requires at least 1 arg(s), only received 0")
+		}
 		for _, name := range args {
-			if err := installProvider(cmd.OutOrStdout(), name); err != nil {
+			if err := installProvider(w, name); err != nil {
 				return fmt.Errorf("provider %q: %w", name, err)
 			}
 		}
@@ -52,8 +75,71 @@ func init() {
 	providerInstallCmd.Flags().BoolVar(&providerInstallNoCache, "no-cache", false, "bypass registry cache")
 	providerInstallCmd.Flags().StringVar(&providerInstallRegistry, "registry", "",
 		"registry URL override (use 'disabled' / 'none' / 'off' to skip registry resolution; or 'file://<path>' for local index)")
+	providerInstallCmd.Flags().StringVar(&providerInstallImage, "image", "",
+		"install provider from a Docker image ref (must include @sha256: digest); optional positional arg overrides install name")
 	providerCmd.AddCommand(providerInstallCmd)
 	rootCmd.AddCommand(providerCmd)
+}
+
+// installFromImage pulls a provider image, extracts /provider.yaml from it,
+// and registers the provider locally without cloning any git source.
+// The ref must include a @sha256: digest (enforced by ValidateImageRef).
+// nameHint, if non-empty, overrides the name from the manifest.
+// docker is the DockerCmd to use; callers pass providersupport.NewDockerCmd() in production.
+func installFromImage(ctx context.Context, w io.Writer, ref, nameHint string, docker *providersupport.DockerCmd) error {
+	if err := providersupport.ValidateImageRef(ref); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(w, "→ pulling %s\n", ref)
+	if err := docker.PullImage(ctx, ref); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(w, "→ extracting /provider.yaml\n")
+	manifestBytes, err := docker.ExtractManifest(ctx, ref)
+	if err != nil {
+		return err
+	}
+
+	p, err := providersupport.LoadFromBytes(manifestBytes)
+	if err != nil {
+		return fmt.Errorf("parse provider.yaml from image: %w", err)
+	}
+	if p.Meta.Name == "" {
+		return fmt.Errorf("provider.yaml from image is missing meta.name")
+	}
+
+	name := nameHint
+	if name == "" {
+		name = p.Meta.Name
+	}
+
+	providersRoot, err := providersupport.InstallRoot()
+	if err != nil {
+		return fmt.Errorf("get install root: %w", err)
+	}
+	destDir := filepath.Join(providersRoot, name)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("create provider dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "provider.yaml"), manifestBytes, 0o644); err != nil {
+		return fmt.Errorf("write provider.yaml: %w", err)
+	}
+
+	meta := providersupport.InstallMeta{
+		Method:      providersupport.InstallMethodImage,
+		Namespace:   deriveNamespace(ref),
+		Source:      ref,
+		InstalledAt: time.Now().UTC(),
+		Version:     p.Meta.Version,
+	}
+	if err := providersupport.WriteInstallMeta(destDir, meta); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(w, "✓ installed %s %s (image)\n", name, p.Meta.Version)
+	return nil
 }
 
 // installProvider installs a provider by name, path, or git URL.
@@ -140,12 +226,12 @@ func installProvider(w io.Writer, nameOrPath string) error {
 		return fmt.Errorf("load provider.yaml: %w", err)
 	}
 
-	// Copy to ~/.mgtt/providers/<name>/
-	homeDir, err := os.UserHomeDir()
+	// Copy to the canonical install root (honoring MGTT_HOME).
+	providersRoot, err := providersupport.InstallRoot()
 	if err != nil {
-		return fmt.Errorf("get home dir: %w", err)
+		return fmt.Errorf("get install root: %w", err)
 	}
-	destDir := filepath.Join(homeDir, ".mgtt", "providers", p.Meta.Name)
+	destDir := filepath.Join(providersRoot, p.Meta.Name)
 	if err := copyDir(srcDir, destDir); err != nil {
 		return fmt.Errorf("copy provider: %w", err)
 	}
@@ -163,9 +249,74 @@ func installProvider(w io.Writer, nameOrPath string) error {
 		}
 	}
 
+	// Write install metadata so `mgtt provider list` and resolver can use it.
+	gitMeta := providersupport.InstallMeta{
+		Method:      providersupport.InstallMethodGit,
+		Namespace:   deriveNamespace(nameOrPath),
+		Source:      nameOrPath,
+		InstalledAt: time.Now().UTC(),
+		Version:     p.Meta.Version,
+	}
+	// Non-fatal: list and resolve degrade gracefully when the file is absent.
+	_ = providersupport.WriteInstallMeta(destDir, gitMeta)
+
 	fmt.Fprintf(w, "  %s %-12s  v%s  auth: %s  access: %s\n",
 		checkmark(true), p.Meta.Name, p.Meta.Version, p.Auth.Strategy, p.Auth.Access.Probes)
 	return nil
+}
+
+// deriveNamespace extracts the namespace (org/user) from a git URL or image
+// reference. For git URLs like "https://github.com/mgt-tool/mgtt-provider-tempo"
+// or image refs like "ghcr.io/mgt-tool/mgtt-provider-tempo:0.2.0@sha256:...",
+// the first path segment after the host is the namespace.
+// Returns "" if the namespace cannot be determined.
+func deriveNamespace(urlOrRef string) string {
+	// Strip common git/image prefixes to get the path component.
+	var path string
+	for _, prefix := range []string{
+		"https://", "http://", "git://", "git@",
+	} {
+		if strings.HasPrefix(urlOrRef, prefix) {
+			// After stripping prefix: host/path... — find next slash.
+			rest := strings.TrimPrefix(urlOrRef, prefix)
+			// For git@: host:path — replace colon with slash.
+			rest = strings.Replace(rest, ":", "/", 1)
+			if idx := strings.Index(rest, "/"); idx >= 0 {
+				path = rest[idx+1:]
+			}
+			break
+		}
+	}
+
+	// For image refs (no http/git prefix): strip digest first, then host/path.
+	if path == "" {
+		// Strip @sha256:... digest if present.
+		ref := urlOrRef
+		if idx := strings.Index(ref, "@"); idx >= 0 {
+			ref = ref[:idx]
+		}
+		// Strip tag.
+		if idx := strings.LastIndex(ref, ":"); idx >= 0 {
+			ref = ref[:idx]
+		}
+		// Now ref is something like "ghcr.io/mgt-tool/mgtt-provider-tempo".
+		// The host is the first segment; path follows.
+		if idx := strings.Index(ref, "/"); idx >= 0 {
+			path = ref[idx+1:]
+		}
+	}
+
+	if path == "" {
+		return ""
+	}
+
+	// The first segment of the path is the namespace.
+	segments := strings.SplitN(path, "/", 2)
+	if len(segments) < 2 || segments[0] == "" {
+		// Only one segment — this is a bare name, no namespace.
+		return ""
+	}
+	return segments[0]
 }
 
 // cloneRepo clones a git repo to a temp dir and returns the path.

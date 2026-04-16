@@ -2,10 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mgt-tool/mgtt/internal/providersupport"
 	"github.com/mgt-tool/mgtt/internal/registry"
 )
 
@@ -46,5 +51,281 @@ func TestInstallProvider_RegistryFlagOverridesEnv(t *testing.T) {
 	err := installProvider(&buf, "phantom")
 	if !errors.Is(err, registry.ErrRegistryDisabled) {
 		t.Fatalf("flag must override env; got %v", err)
+	}
+}
+
+// minimalProviderYAML is a valid provider.yaml for installFromImage tests.
+const minimalProviderYAML = `
+meta:
+  name: test-provider
+  version: 1.2.3
+  description: a test provider
+
+auth:
+  strategy: none
+  access:
+    probes: none
+    writes: none
+`
+
+// TestInstallFromImage_WritesFilesAndMeta exercises the full installFromImage
+// path with a fake DockerCmd. Verifies that provider.yaml and .mgtt-install.json
+// are written to MGTT_HOME/providers/<name>/ with the correct content.
+func TestInstallFromImage_WritesFilesAndMeta(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	ref := "ghcr.io/example/test-provider:1.2.3@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
+
+	// Fake docker: pull succeeds silently; extract returns minimalProviderYAML.
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			switch args[0] {
+			case "pull":
+				return []byte("fake pull output"), nil
+			case "run":
+				return []byte(minimalProviderYAML), nil
+			default:
+				t.Errorf("unexpected docker subcommand %q", args[0])
+				return nil, nil
+			}
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(context.Background(), &buf, ref, "", fakeDocker)
+	if err != nil {
+		t.Fatalf("installFromImage returned error: %v", err)
+	}
+
+	destDir := filepath.Join(home, "providers", "test-provider")
+
+	// provider.yaml must exist and contain the manifest bytes.
+	yamlPath := filepath.Join(destDir, "provider.yaml")
+	yamlBytes, err := os.ReadFile(yamlPath)
+	if err != nil {
+		t.Fatalf("provider.yaml not written: %v", err)
+	}
+	if !strings.Contains(string(yamlBytes), "test-provider") {
+		t.Errorf("provider.yaml does not contain provider name; got %q", yamlBytes)
+	}
+
+	// .mgtt-install.json must exist with correct method, source, version.
+	meta, err := providersupport.ReadInstallMeta(destDir)
+	if err != nil {
+		t.Fatalf("ReadInstallMeta failed: %v", err)
+	}
+	if meta.Method != providersupport.InstallMethodImage {
+		t.Errorf("expected method=image, got %q", meta.Method)
+	}
+	if meta.Source != ref {
+		t.Errorf("expected source=%q, got %q", ref, meta.Source)
+	}
+	if meta.Version != "1.2.3" {
+		t.Errorf("expected version=1.2.3, got %q", meta.Version)
+	}
+	if meta.InstalledAt.IsZero() {
+		t.Error("InstalledAt must not be zero")
+	}
+
+	// stdout must include success line.
+	out := buf.String()
+	if !strings.Contains(out, "installed test-provider") {
+		t.Errorf("expected success message in output; got %q", out)
+	}
+
+	// Verify no install hook was run (no hook-related output).
+	if strings.Contains(out, "install hook") {
+		t.Errorf("image install must not run hooks; got output %q", out)
+	}
+
+}
+
+// TestInstallFromImage_NameHintOverride verifies that a positional arg overrides
+// the install name from the manifest.
+func TestInstallFromImage_NameHintOverride(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	ref := "ghcr.io/example/test-provider:1.2.3@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
+
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			if args[0] == "run" {
+				return []byte(minimalProviderYAML), nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(context.Background(), &buf, ref, "my-override", fakeDocker)
+	if err != nil {
+		t.Fatalf("installFromImage returned error: %v", err)
+	}
+
+	// Provider must be installed under the override name, not the manifest name.
+	overrideDir := filepath.Join(home, "providers", "my-override")
+	if _, err := os.Stat(filepath.Join(overrideDir, "provider.yaml")); err != nil {
+		t.Errorf("provider.yaml not found under override name %q: %v", "my-override", err)
+	}
+	// Default name dir must NOT exist.
+	defaultDir := filepath.Join(home, "providers", "test-provider")
+	if _, err := os.Stat(defaultDir); !os.IsNotExist(err) {
+		t.Errorf("expected no dir at manifest name %q, but found one", defaultDir)
+	}
+}
+
+// TestInstallFromImage_RejectsMalformedManifest verifies that a malformed
+// provider.yaml extracted from an image is rejected before any files are written.
+func TestInstallFromImage_RejectsMalformedManifest(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("MGTT_HOME", root)
+
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			// Pull succeeds; extract returns garbage YAML.
+			if args[0] == "run" {
+				return []byte("not: [valid yaml"), nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(
+		context.Background(),
+		&buf,
+		"ghcr.io/x/provider@sha256:deadbeefdeadbeefdeadbeefdeadbeef",
+		"",
+		fakeDocker,
+	)
+	if err == nil {
+		t.Fatal("expected error on malformed manifest, got nil")
+	}
+	// Error should mention parsing.
+	if !strings.Contains(err.Error(), "parse") {
+		t.Errorf("error should mention parse failure; got %v", err)
+	}
+	// No install dir should have been created.
+	if entries, _ := os.ReadDir(filepath.Join(root, "providers")); len(entries) != 0 {
+		t.Errorf("no dir should be created on manifest parse failure; got %d entries", len(entries))
+	}
+}
+
+// TestInstallFromImage_PullFailurePropagates verifies that a docker pull failure
+// is returned immediately and no install directory is created.
+func TestInstallFromImage_PullFailurePropagates(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("MGTT_HOME", root)
+
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			if args[0] == "pull" {
+				return []byte("Error response from daemon: unauthorized"), fmt.Errorf("exit status 1")
+			}
+			t.Fatalf("extract should not be called after pull failure; got args %v", args)
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(
+		context.Background(),
+		&buf,
+		"ghcr.io/private/provider@sha256:deadbeefdeadbeefdeadbeefdeadbeef",
+		"",
+		fakeDocker,
+	)
+	if err == nil {
+		t.Fatal("expected error on pull failure, got nil")
+	}
+	// No install dir should have been created.
+	if entries, _ := os.ReadDir(filepath.Join(root, "providers")); len(entries) != 0 {
+		t.Errorf("no dir should be created on pull failure; got %d entries", len(entries))
+	}
+}
+
+// TestDeriveNamespace covers all supported input forms for deriveNamespace.
+func TestDeriveNamespace(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		// Image refs with digest
+		{
+			input: "ghcr.io/mgt-tool/mgtt-provider-tempo:0.2.0@sha256:abc123",
+			want:  "mgt-tool",
+		},
+		{
+			input: "ghcr.io/mgt-tool/mgtt-provider-kubernetes:1.0.0@sha256:deadbeef",
+			want:  "mgt-tool",
+		},
+		// Image ref with only digest (no tag)
+		{
+			input: "ghcr.io/mgt-tool/mgtt-provider-docker@sha256:deadbeef",
+			want:  "mgt-tool",
+		},
+		// Git HTTPS URLs
+		{
+			input: "https://github.com/mgt-tool/mgtt-provider-tempo",
+			want:  "mgt-tool",
+		},
+		{
+			input: "https://github.com/org-name/some-provider",
+			want:  "org-name",
+		},
+		// Git SSH URL
+		{
+			input: "git@github.com:mgt-tool/mgtt-provider-tempo.git",
+			want:  "mgt-tool",
+		},
+		// HTTP URL
+		{
+			input: "http://internal.host/myorg/myprovider",
+			want:  "myorg",
+		},
+		// Bare name — no namespace
+		{
+			input: "kubernetes",
+			want:  "",
+		},
+		// Registry with no path segments after host — no namespace
+		{
+			input: "ghcr.io/standalone",
+			want:  "",
+		},
+		// Empty string
+		{
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			got := deriveNamespace(tc.input)
+			if got != tc.want {
+				t.Errorf("deriveNamespace(%q) = %q; want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestInstallFromImage_RejectsBareTag verifies that refs without @sha256: are rejected.
+func TestInstallFromImage_RejectsBareTag(t *testing.T) {
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			t.Error("docker must not be called for invalid ref")
+			return nil, nil
+		},
+	}
+	var buf bytes.Buffer
+	err := installFromImage(context.Background(), &buf, "ghcr.io/example/foo:latest", "", fakeDocker)
+	if err == nil {
+		t.Fatal("expected error for bare tag")
+	}
+	if !strings.Contains(err.Error(), "sha256") {
+		t.Errorf("error should mention sha256; got %q", err.Error())
 	}
 }
