@@ -2,6 +2,13 @@
 
 The vocabulary (`provider.yaml`) tells mgtt's constraint engine what your technology looks like — what component types exist, what facts can be observed, what states are possible, and how failures propagate.
 
+## On this page
+
+- [Full schema](#full-schema)
+- [Section reference](#section-reference) — meta, types, facts, states, failure_modes
+- [Validate your vocabulary](#validate-your-vocabulary)
+- [Next steps](#next-steps)
+
 ---
 
 ## Full schema

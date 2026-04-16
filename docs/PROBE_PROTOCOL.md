@@ -4,6 +4,17 @@ This document is the authoritative contract between mgtt and any provider runner
 
 mgtt's engine and CLI talk to providers exclusively through the `Executor` interface. Anything outside this document — backend choice (kubectl, aws, docker, …), authorization model (RBAC, IAM, tokens, …), JSON path conventions — is the provider's concern, not core's.
 
+## On this page
+
+- [Invocation](#invocation) — argv shape
+- [Success output](#success-output-stdout-exit-0) — JSON on stdout
+- [Error output](#error-output-stderr-non-zero-exit) — exit codes
+- [Timeouts and limits](#timeouts-and-limits)
+- [Debug output](#debug-output)
+- [Versioning](#versioning) — `requires.mgtt`
+- [Validation](#validation)
+- [Read-only contract](#read-only-contract)
+
 ## Invocation
 
 mgtt invokes the runner as:

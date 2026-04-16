@@ -6,6 +6,12 @@ A provider teaches mgtt about a technology. You provide three things:
 2. **The binary** — probes real systems, returns typed values
 3. **The install hook** — builds or downloads the binary
 
+## On this page
+
+- [Directory Structure](#directory-structure)
+- [Install](#install)
+- [Next Steps](#next-steps) — vocabulary, protocol, hooks, testing
+
 ## Directory Structure
 
 ```

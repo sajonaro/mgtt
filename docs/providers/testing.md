@@ -2,6 +2,15 @@
 
 Four levels of testing, from static checks to live probes.
 
+## On this page
+
+1. [Validate the vocabulary](#1-validate-the-vocabulary)
+2. [Test the binary directly](#2-test-the-binary-directly)
+3. [Write simulation scenarios](#3-write-simulation-scenarios)
+4. [Test against a real system](#4-test-against-a-real-system)
+- [Reference implementation](#reference-implementation)
+- [Next steps](#next-steps)
+
 ---
 
 ## 1. Validate the vocabulary
