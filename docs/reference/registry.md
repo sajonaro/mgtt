@@ -20,6 +20,7 @@ https://mgt-tool.github.io/mgtt/registry.yaml
 | [aws](https://github.com/mgt-tool/mgtt-provider-aws) | AWS managed services via aws-cli | databases, compute, messaging, storage | `mgtt provider install aws` |
 | [docker](https://github.com/sajonaro/mgtt-provider-docker) | Docker containers via docker inspect | containers | `mgtt provider install docker` |
 | [terraform](https://github.com/mgt-tool/mgtt-provider-terraform) | Terraform-managed infrastructure — state health, drift detection, config-vs-reality reasoning | iac, terraform, drift | `mgtt provider install terraform` |
+| [tempo](https://github.com/mgt-tool/mgtt-provider-tempo) | Per-span SLO checks against Grafana Tempo — current_p99, breach_duration, error_rate | tracing, otel, grafana, slo | `mgtt provider install tempo` |
 
 Run `mgtt provider inspect <name>` after install to see the full type catalog.
 
