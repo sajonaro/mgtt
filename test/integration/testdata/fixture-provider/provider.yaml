@@ -1,0 +1,29 @@
+meta:
+  name: fixture
+  version: 0.0.1
+  description: integration-test fixture provider — exposes one widget component type
+  command: /usr/local/bin/mgtt-provider-fixture
+hooks: {}
+auth:
+  strategy: none
+  access:
+    probes: none
+    writes: none
+
+types:
+  widget:
+    description: An integration-test widget
+    facts:
+      count:
+        type: mgtt.int
+        ttl: 10s
+        probe:
+          cost: low
+    healthy:
+      - count > 0
+    states:
+      live:
+        when: "count > 0"
+        description: widget is live
+    default_active_state: live
+    failure_modes: {}
