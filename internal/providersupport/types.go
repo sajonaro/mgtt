@@ -24,7 +24,8 @@ type ProviderMeta struct {
 }
 
 type ProviderHooks struct {
-	Install string
+	Install   string
+	Uninstall string
 }
 
 type DataType struct {

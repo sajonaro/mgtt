@@ -30,7 +30,8 @@ type rawMeta struct {
 }
 
 type rawHooks struct {
-	Install string `yaml:"install"`
+	Install   string `yaml:"install"`
+	Uninstall string `yaml:"uninstall"`
 }
 
 type rawVar struct {
@@ -104,7 +105,10 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 			Command:     raw.Meta.Command,
 			Requires:    raw.Meta.Requires,
 		},
-		Hooks:     ProviderHooks{Install: raw.Hooks.Install},
+		Hooks: ProviderHooks{
+			Install:   raw.Hooks.Install,
+			Uninstall: raw.Hooks.Uninstall,
+		},
 		Types:     make(map[string]*Type),
 		Variables: make(map[string]Variable),
 		Auth: AuthSpec{

@@ -20,7 +20,7 @@ import (
 type Request struct {
 	Type      string
 	Name      string
-	Namespace string            // shorthand for Extra["namespace"]; may be empty
+	Namespace string // shorthand for Extra["namespace"]; may be empty
 	Fact      string
 	Extra     map[string]string // every --<key> <value> pair from the runner argv (except --type)
 }
