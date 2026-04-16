@@ -43,7 +43,7 @@ var modelValidateCmd = &cobra.Command{
 			if ref.LegacyBareName {
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"⚠ model uses bare provider name %q; consider %q\n",
-					ref.Name, ref.Name+"@<version>")
+					ref.Name, "<namespace>/"+ref.Name+"@<version>")
 			}
 		}
 
