@@ -1,5 +1,5 @@
 # `mgtt` — **m**odel **g**uided **t**roubleshooting **t**ool
-## Specification v1.0
+## Specification v{{ MGTT_VERSION }}
 
 ---
 

@@ -4,6 +4,11 @@ repo_url: https://github.com/mgt-tool/mgtt
 repo_name: mgt-tool/mgtt
 docs_dir: docs
 
+# Wire the {{ MGTT_VERSION }} placeholder so docs source the version
+# from the repo's VERSION file at build time — no manual sync.
+hooks:
+  - docs/_hooks/version_substitute.py
+
 theme:
   name: material
   logo: images/mgtt_icon_medium.png
