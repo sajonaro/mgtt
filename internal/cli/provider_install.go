@@ -258,7 +258,9 @@ func installProvider(w io.Writer, nameOrPath string) error {
 		Version:     p.Meta.Version,
 	}
 	// Non-fatal: list and resolve degrade gracefully when the file is absent.
-	_ = providersupport.WriteInstallMeta(destDir, gitMeta)
+	if err := providersupport.WriteInstallMeta(destDir, gitMeta); err != nil {
+		fmt.Fprintf(w, "⚠ could not write install metadata: %v\n", err)
+	}
 
 	fmt.Fprintf(w, "  %s %-12s  v%s  auth: %s  access: %s\n",
 		checkmark(true), p.Meta.Name, p.Meta.Version, p.Auth.Strategy, p.Auth.Access.Probes)

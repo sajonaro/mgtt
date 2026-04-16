@@ -77,13 +77,21 @@ Git installs support this too (via commit SHA), but it's optional. Docker image 
 
 ## What gets stored locally
 
-Both methods produce the same layout under `~/.mgtt/providers/<name>/`:
+Both methods write into `~/.mgtt/providers/<name>/`, but what ends up on disk differs:
 
+**Git install:**
 ```
 ~/.mgtt/providers/tempo/
-├── .mgtt-install.json     # metadata: method, digest/commit, timestamp
-├── probe                  # the executable (from either git build or docker extract)
-└── <maybe other files>    # docs, examples, etc (git install only)
+├── .mgtt-install.json     # metadata: method, source URL, timestamp
+├── probe                  # the compiled executable (built from source)
+└── <maybe other files>    # provider.yaml, docs, examples, etc.
+```
+
+**Image install:**
+```
+~/.mgtt/providers/tempo/
+├── .mgtt-install.json     # metadata: method, image digest, timestamp
+└── provider.yaml          # provider descriptor only; binary lives in the Docker image
 ```
 
 The `.mgtt-install.json` file records:

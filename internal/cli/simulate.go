@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/mgt-tool/mgtt/internal/model"
@@ -43,6 +44,18 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 	m, err := model.Load(simulateModel)
 	if err != nil {
 		return fmt.Errorf("load model: %w", err)
+	}
+
+	// Emit FQN deprecation warnings even in simulation.
+	for _, name := range m.Meta.Providers {
+		ref, refErr := model.ParseProviderRef(name)
+		if refErr != nil {
+			continue // bad ref; validate catches this
+		}
+		if ref.LegacyBareName {
+			fmt.Fprintf(os.Stderr, "⚠ model uses bare provider name %q; consider %q\n",
+				ref.Name, "<namespace>/"+ref.Name+"@<version>")
+		}
 	}
 
 	reg := providersupport.LoadAllForUse()
