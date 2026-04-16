@@ -2,6 +2,17 @@
 
 Complete reference for `system.model.yaml` — the file that describes your system.
 
+## On this page
+
+- [Minimal example](#minimal-example)
+- [Full schema](#full-schema)
+- [`meta` section](#meta-section) — system identity, providers, vars
+- [`components` section](#components-section) — declaring what mgtt reasons about
+    - [Dependencies](#dependencies)
+    - [Health expressions](#health-expressions) — operators, fact references
+- [Complete example](#complete-example)
+- [Validation](#validation) — what `mgtt model validate` checks
+
 ---
 
 ## Minimal example
