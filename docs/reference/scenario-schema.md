@@ -2,6 +2,20 @@
 
 Complete reference for scenario files — the YAML files that define failure simulations.
 
+## On this page
+
+- [Anatomy of a scenario](#anatomy-of-a-scenario)
+- Fields:
+    - [`name`](#name) — scenario name shown in output
+    - [`description`](#description) — operator-facing notes
+    - [`inject`](#inject) — synthetic facts fed to the engine
+    - [`expect`](#expect) — what the engine should conclude
+- [File location](#file-location)
+- [Running scenarios](#running-scenarios)
+- [Example: complete scenario set](#example-complete-scenario-set)
+- [Common mistake: per-component status assertions](#common-mistake-per-component-status-assertions)
+- [What a failing scenario teaches you](#what-a-failing-scenario-teaches-you)
+
 ---
 
 ## Anatomy of a scenario
