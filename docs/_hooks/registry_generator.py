@@ -145,10 +145,14 @@ def _parse_repo(repo_url: str) -> tuple[str, str]:
 
 
 def _github_get(path: str) -> bytes:
+    # Deliberately anonymous. The workflow's GITHUB_TOKEN is scoped to the
+    # repo running the workflow; sending it to the Contents API of a
+    # DIFFERENT repo returns 403 Forbidden. Public-repo anonymous reads
+    # don't need auth (rate limit 60/hr, masked by our disk cache). GHCR
+    # digest fetches still use GITHUB_TOKEN — that's where the scope
+    # actually matters.
     req = urllib.request.Request(f"{_github_base()}{path}")
     req.add_header("Accept", "application/vnd.github+json")
-    if token := os.environ.get("GITHUB_TOKEN"):
-        req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=15) as resp:
         return resp.read()
 

@@ -128,6 +128,4 @@ mgtt provider install https://github.com/mgt-tool/mgtt-provider-quickwit
 mgtt provider install --image ghcr.io/mgt-tool/mgtt-provider-quickwit:0.2.0@sha256:deadbeef
 ```
 
----
-
-<!-- trigger: retry with packages:read + GITHUB_TOKEN -->
+<!-- trigger: drop anon on github contents api -->
