@@ -56,8 +56,8 @@ auth:
 
 	// Write .mgtt-install.json for image provider.
 	imageMeta := providersupport.InstallMeta{
-		Method: providersupport.InstallMethodImage,
-		Source: "ghcr.io/example/image-provider:2.0.0@sha256:deadbeef",
+		Method:  providersupport.InstallMethodImage,
+		Source:  "ghcr.io/example/image-provider:2.0.0@sha256:deadbeef",
 		Version: "2.0.0",
 	}
 	if err := providersupport.WriteInstallMeta(imageDir, imageMeta); err != nil {
