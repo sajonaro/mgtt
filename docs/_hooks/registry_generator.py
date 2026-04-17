@@ -20,9 +20,60 @@ REGISTRY_MD = REPO_ROOT / "docs" / "reference" / "registry.md"
 CACHE_DIR = REPO_ROOT / ".cache" / "registry-generator"
 
 
+REGISTRY_MD_PREAMBLE = """# Provider Registry
+
+<!--
+GENERATED FILE — do not edit by hand.
+Source: docs/registry.yaml (minimal name→URL map) + each provider's upstream
+provider.yaml. Rebuilt by docs/_hooks/registry_generator.py on every
+mkdocs build.
+-->
+
+Community-maintained providers for mgtt.
+
+The single source of truth for the name→URL map is
+[`docs/registry.yaml`](https://github.com/mgt-tool/mgtt/blob/main/docs/registry.yaml).
+Per-provider detail below is pulled from each repo's `provider.yaml` at
+its latest `v*` tag on every docs build.
+
+Replace `<digest>` shown in Install commands below with the current
+`sha256:…` from your own `docker buildx imagetools inspect` if you need
+to double-check.
+
+---
+
+"""
+
+
 def on_pre_build(config, **_kwargs):
-    """mkdocs hook entry point."""
-    raise NotImplementedError("wired in later tasks")
+    with REGISTRY_YAML.open() as f:
+        entries = load_registry(f)
+
+    sections = [REGISTRY_MD_PREAMBLE]
+    for name, entry in entries.items():
+        ref = resolve_ref(entry["url"], entry["channel"])
+        yaml_text = fetch_provider_yaml(entry["url"], ref)
+        info = parse_provider(yaml_text)
+        image_ref = entry.get("image") or _default_image_ref(entry["url"])
+        digest = ""
+        if not entry["skip_image"]:
+            digest = fetch_image_digest(image_ref, info["version"])
+        card = render_card(
+            entry_name=name,
+            repo_url=entry["url"],
+            image_ref=image_ref,
+            digest=digest,
+            info=info,
+            skip_image=entry["skip_image"],
+        )
+        sections.append(card)
+
+    REGISTRY_MD.write_text("\n".join(sections) + "\n")
+
+
+def _default_image_ref(repo_url: str) -> str:
+    owner, repo = _parse_repo(repo_url)
+    return f"ghcr.io/{owner}/{repo}"
 
 
 DEFAULTS = {"channel": "latest-tag", "skip_image": False}
