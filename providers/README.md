@@ -454,14 +454,18 @@ The `COPY types /types` line is only needed for multi-file providers (those that
 
 Publish to `ghcr.io` (or any registry) and advertise the digest in your README and the registry entry.
 
-### Runtime caveat: image-runner does not yet forward env or mounts
+### Declaring image capabilities
 
-`mgtt plan` invokes probes on image-installed providers via plain `docker run --rm <image> probe <component> <fact> …`. No host env vars are passed through, no volumes are mounted. That means:
+Providers that need host context at probe time declare **capabilities** in `provider.yaml`:
 
-- **Fully self-contained providers** (HTTP to a URL configured via `vars:`) work end-to-end out of the box. Tempo and Quickwit are examples.
-- **Providers that need host credentials** (AWS, Terraform, Kubernetes, Docker) — the CLI ships in the image, but the credential chain (`~/.aws/`, `KUBECONFIG`, `$(pwd)` as Terraform workdir, `/var/run/docker.sock`) is not reachable from inside the container. Operators must either run mgtt in an environment where the container naturally has access (e.g., an in-cluster pod with a service account) or fall back to git install.
+```yaml
+image:
+  needs: [kubectl, network]
+```
 
-Env/volume forwarding is a tracked follow-up on mgtt core; until then, author providers so their `vars:` cover everything they need to configure at runtime, and document any environmental assumptions in the provider README.
+mgtt expands each label into the right `docker run` flags — bind mounts for credential dirs, `-e` flags for env vars, `--network host` when the probe must reach an in-cluster URL. The built-in vocabulary covers `network`, `kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`; operators override built-ins or define custom labels via `$MGTT_HOME/capabilities.yaml`. See [Image Capabilities](../docs/reference/image-capabilities.md) for the full reference.
+
+HTTP-only providers (tempo, quickwit) typically just need `[network]`. CLI-wrapping providers (kubernetes, terraform, docker) declare the matching cap plus `network` when the target is an in-cluster service. Shell-fallback providers (no `meta.command`) can't declare capabilities — there's no binary in the image to inject flags into.
 
 ### Registry Entry with Image
 

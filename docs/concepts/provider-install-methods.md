@@ -126,6 +126,21 @@ $ mgtt provider list
 
 ---
 
+## What the image gets at runtime
+
+`mgtt plan` invokes image-installed providers with `docker run --rm`. The container doesn't inherit your shell environment by default — mgtt injects bind mounts and env forwards based on **capabilities** the provider declared in its `provider.yaml`:
+
+```yaml
+image:
+  needs: [kubectl, network]
+```
+
+Each label expands into the matching `docker run` flags at probe time. Built-in labels cover the common backends (`kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`, `network`). Operators override the defaults or add custom labels via `$MGTT_HOME/capabilities.yaml`; `MGTT_IMAGE_CAPS_DENY=…` refuses specific capabilities for locked-down environments.
+
+See the [Image Capabilities reference](../reference/image-capabilities.md) for the full list and the override mechanics.
+
+---
+
 ## Switching install method for the same provider
 
 Both methods use the same local directory structure, so switching is straightforward:
