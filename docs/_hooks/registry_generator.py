@@ -60,7 +60,10 @@ def _github_get(path: str) -> bytes:
         return resp.read()
 
 
-_SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)")
+# Strict: only v<major>.<minor>.<patch> — no pre-release/build suffixes.
+# Pre-releases like v1.2.3-rc1 are skipped; operators who want them should
+# pin channel: v1.2.3-rc1 explicitly.
+_SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 def resolve_ref(repo_url: str, channel: str) -> str:
@@ -70,8 +73,15 @@ def resolve_ref(repo_url: str, channel: str) -> str:
     if channel != "latest-tag":
         return channel  # caller passed a specific tag
     owner, repo = _parse_repo(repo_url)
-    raw = _github_get(f"/repos/{owner}/{repo}/tags")
-    tags = json.loads(raw)
+    tags: list[dict] = []
+    for page in range(1, 4):  # at most 300 tags; refuse to walk further
+        raw = _github_get(f"/repos/{owner}/{repo}/tags?per_page=100&page={page}")
+        page_tags = json.loads(raw)
+        if not page_tags:
+            break
+        tags.extend(page_tags)
+        if len(page_tags) < 100:
+            break
     best = None
     for t in tags:
         name = t["name"]
@@ -92,4 +102,6 @@ def fetch_provider_yaml(repo_url: str, ref: str) -> str:
     obj = json.loads(raw)
     if obj.get("encoding") != "base64":
         raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
+    if "content" not in obj:
+        raise ValueError(f"{owner}/{repo}@{ref}: API response lacks 'content'")
     return base64.b64decode(obj["content"]).decode("utf-8")

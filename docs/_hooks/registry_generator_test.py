@@ -77,8 +77,14 @@ def _make_handler():
             pass
 
         def do_GET(self):
-            if self.path.endswith("/tags"):
-                body = json.dumps([{"name": "v0.2.0"}, {"name": "v0.1.0"}]).encode()
+            path = self.path.split("?", 1)[0]
+            query = self.path.split("?", 1)[1] if "?" in self.path else ""
+            if path.endswith("/tags"):
+                # Paginated: return tags on page=1, empty on higher pages.
+                if "page=1" in query or "page=" not in query:
+                    body = json.dumps([{"name": "v0.2.0"}, {"name": "v0.1.0"}]).encode()
+                else:
+                    body = b"[]"
                 self._respond(200, body, "application/json")
             elif "/contents/provider.yaml" in self.path:
                 body = json.dumps({
