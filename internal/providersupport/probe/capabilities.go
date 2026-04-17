@@ -102,11 +102,13 @@ var builtins = map[string]func() Capability{
 	},
 }
 
-// passEnv returns ["-e", "KEY=VALUE"] when KEY is set, else nil. mgtt never
-// emits a bare -e flag to avoid Docker consuming the next arg.
+// passEnv returns ["-e", "KEY=VALUE"] when KEY is set to a non-empty
+// value, else nil. mgtt never emits a bare -e flag (which would make
+// Docker consume the next positional arg), and treats KEY="" the same
+// as unset because most callers consider an empty var meaningless.
 func passEnv(key string) []string {
 	v, ok := os.LookupEnv(key)
-	if !ok {
+	if !ok || v == "" {
 		return nil
 	}
 	return []string{"-e", key + "=" + v}
@@ -137,13 +139,18 @@ func KnownNames() []string {
 	return names
 }
 
-// Apply expands a list of needs into docker-run argv, skipping unknown
-// caps and honoring MGTT_IMAGE_CAPS_DENY. The return value is ready to
-// prepend to `<imageRef> <probe-args>`.
+// Apply expands a list of needs into docker-run argv, honoring
+// MGTT_IMAGE_CAPS_DENY. The return value is ready to prepend to
+// `<imageRef> <probe-args>`.
 //
 // Order is stable: caps expand in the order provider.yaml declares them,
 // so operators reading the docker-run line can scan needs and argv side
 // by side.
+//
+// Unknown capabilities are skipped but emit a stderr warning so the
+// operator learns about it — install-time validation is the loud path,
+// but this is defense in depth in case a capabilities.yaml override was
+// removed between install and probe.
 func Apply(needs []string) []string {
 	deny := parseDeny(os.Getenv("MGTT_IMAGE_CAPS_DENY"))
 	var out []string
@@ -153,6 +160,9 @@ func Apply(needs []string) []string {
 		}
 		cap, ok := resolve(n)
 		if !ok {
+			fmt.Fprintf(os.Stderr,
+				"mgtt: warning: unknown image capability %q — skipping (known: %s)\n",
+				n, strings.Join(KnownNames(), ", "))
 			continue
 		}
 		out = append(out, cap...)

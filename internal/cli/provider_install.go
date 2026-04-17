@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mgt-tool/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
 	"github.com/mgt-tool/mgtt/internal/registry"
 
 	"github.com/spf13/cobra"
@@ -115,7 +116,22 @@ func installFromImage(ctx context.Context, w io.Writer, ref, nameHint string, do
 		name = p.Meta.Name
 	}
 
+	// Install-time capability validation. Per the image-runner capabilities
+	// spec, unknown caps must fail install loudly — silent drop at probe time
+	// turns a typo in provider.yaml into a cryptic "probe didn't reach X"
+	// debugging session. Shell-fallback refusal is handled by validate.Static.
 	if len(p.Image.Needs) > 0 {
+		var unknown []string
+		for _, n := range p.Image.Needs {
+			if !probe.Known(n) {
+				unknown = append(unknown, n)
+			}
+		}
+		if len(unknown) > 0 {
+			return fmt.Errorf(
+				"provider declares unknown image capabilities: %s (known: %s); add them to $MGTT_HOME/capabilities.yaml or fix provider.yaml",
+				strings.Join(unknown, ", "), strings.Join(probe.KnownNames(), ", "))
+		}
 		fmt.Fprintf(w, "→ capabilities: %s\n", strings.Join(p.Image.Needs, ", "))
 	}
 

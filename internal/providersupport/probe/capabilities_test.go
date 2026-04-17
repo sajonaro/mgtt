@@ -83,6 +83,51 @@ func TestApply_EnvPassthroughOnlyWhenSet(t *testing.T) {
 	}
 }
 
+// TestApply_EmptyEnvTreatedAsUnset verifies that KEY="" produces no -e
+// flag. Docker would otherwise pass through the empty value, which
+// usually surprises callers expecting "unset" semantics.
+func TestApply_EmptyEnvTreatedAsUnset(t *testing.T) {
+	t.Setenv("MGTT_HOME", t.TempDir())
+	ResetOverridesCache()
+	t.Setenv("AWS_PROFILE", "") // explicitly empty
+	got := Apply([]string{"aws"})
+	joined := strings.Join(got, " ")
+	if strings.Contains(joined, "AWS_PROFILE") {
+		t.Errorf("empty env var must not produce -e flag; got %v", got)
+	}
+}
+
+// TestApply_UnknownCapEmitsStderrWarning captures os.Stderr while
+// calling Apply and verifies the unknown-cap diagnostic reaches it.
+// This is defense in depth — install-time validation is the loud path,
+// but if a capabilities.yaml override was removed between install and
+// probe, the operator still gets a message on the probe terminal.
+func TestApply_UnknownCapEmitsStderrWarning(t *testing.T) {
+	t.Setenv("MGTT_HOME", t.TempDir())
+	ResetOverridesCache()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	origStderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	_ = Apply([]string{"vault-undefined"})
+	_ = w.Close()
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	out := string(buf[:n])
+	if !strings.Contains(out, "vault-undefined") {
+		t.Errorf("stderr must name the unknown cap; got %q", out)
+	}
+	if !strings.Contains(out, "warning") {
+		t.Errorf("stderr must carry a warning word so operators grep for it; got %q", out)
+	}
+}
+
 func TestKnown(t *testing.T) {
 	t.Setenv("MGTT_HOME", t.TempDir())
 	ResetOverridesCache()
