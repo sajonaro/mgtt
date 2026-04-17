@@ -235,3 +235,45 @@ func TestFetch_ParsesCapabilities(t *testing.T) {
 		t.Errorf("nil Capabilities must be omitted; got %q", out)
 	}
 }
+
+func TestFetch_ParsesNetwork(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "registry.yaml")
+	body := []byte(`providers:
+  tempo:
+    url: https://github.com/x/tempo
+    description: tempo
+    capabilities: []
+    network: host
+  docker:
+    url: https://github.com/x/docker
+    description: docker
+    capabilities: [docker]
+    # no network: defaults to empty (bridge)
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MGTT_REGISTRY_URL", "")
+	reg, err := Fetch(Source{URL: "file://" + path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempo, _ := reg.Lookup("tempo")
+	if tempo.Network != "host" {
+		t.Errorf("want tempo.Network=host; got %q", tempo.Network)
+	}
+	docker, _ := reg.Lookup("docker")
+	if docker.Network != "" {
+		t.Errorf("omitted network must parse empty; got %q", docker.Network)
+	}
+
+	// Round-trip: empty Network must be omitted from emitted YAML.
+	out, err := yaml.Marshal(Entry{URL: "u", Description: "d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "network") {
+		t.Errorf("empty Network must be omitted; got %q", out)
+	}
+}
