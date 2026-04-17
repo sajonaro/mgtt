@@ -21,7 +21,7 @@ import (
 //  4. Install it via `mgtt provider install --image <ref>`.
 //  5. Verify the install metadata on disk.
 //  6. Verify `mgtt provider ls` shows the provider with method=image.
-//  6b. Run `mgtt plan` against a fixture model to exercise buildExecutor's image branch.
+//     6b. Run `mgtt plan` against a fixture model to exercise buildExecutor's image branch.
 //  7. Invoke the image binary directly (docker run) to confirm the probe protocol works.
 //  8. Uninstall and verify cleanup + "docker rmi" hint.
 func TestImageInstall_FullRoundTrip(t *testing.T) {

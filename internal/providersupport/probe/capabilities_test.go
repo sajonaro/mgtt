@@ -171,10 +171,10 @@ capabilities:
 
 func TestSplitShell(t *testing.T) {
 	cases := map[string][]string{
-		``:                                nil,
-		`-v a:b -e X`:                     {"-v", "a:b", "-e", "X"},
-		`-v "a b:c" -e Y`:                 {"-v", "a b:c", "-e", "Y"},
-		`-e 'K=V with spaces' -e K2=V2`:   {"-e", "K=V with spaces", "-e", "K2=V2"},
+		``:                              nil,
+		`-v a:b -e X`:                   {"-v", "a:b", "-e", "X"},
+		`-v "a b:c" -e Y`:               {"-v", "a b:c", "-e", "Y"},
+		`-e 'K=V with spaces' -e K2=V2`: {"-e", "K=V with spaces", "-e", "K2=V2"},
 	}
 	for in, want := range cases {
 		got := splitShell(in)
