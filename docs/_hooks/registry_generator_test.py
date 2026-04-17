@@ -23,6 +23,7 @@ from registry_generator import (
     fetch_provider_yaml,
     load_registry,
     on_pre_build,
+    parse_provider,
     resolve_ref,
 )
 
@@ -166,9 +167,36 @@ class GHCRDigestTest(unittest.TestCase):
         os.environ.pop("MGTT_REGISTRY_GHCR_BASE", None)
 
     def test_digest_from_manifest_header(self):
-        from registry_generator import fetch_image_digest
         digest = fetch_image_digest("ghcr.io/mgt-tool/mgtt-provider-tempo", "0.2.0")
         self.assertEqual(digest, "sha256:deadbeef")
+
+
+class ParseProviderTest(unittest.TestCase):
+    def test_extracts_meta_and_runtime_fields(self):
+        yml = (
+            "meta:\n"
+            "  name: tempo\n"
+            "  version: 0.2.0\n"
+            "  description: Per-span SLO checks\n"
+            "  tags: [tracing, otel]\n"
+            "  requires:\n"
+            "    mgtt: \">=0.1.0\"\n"
+            "  command: /bin/provider\n"
+            "needs: [network-ignored-legacy]\n"  # even if present, we accept
+            "network: host\n"
+            "read_only: false\n"
+            "writes_note: |\n"
+            "  writes state\n"
+        )
+        info = parse_provider(yml)
+        self.assertEqual(info["name"], "tempo")
+        self.assertEqual(info["version"], "0.2.0")
+        self.assertEqual(info["description"], "Per-span SLO checks")
+        self.assertEqual(info["tags"], ["tracing", "otel"])
+        self.assertEqual(info["requires_mgtt"], ">=0.1.0")
+        self.assertEqual(info["network"], "host")
+        self.assertFalse(info["read_only"])
+        self.assertIn("writes state", info["writes_note"])
 
 
 if __name__ == "__main__":

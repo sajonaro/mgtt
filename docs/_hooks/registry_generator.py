@@ -136,3 +136,19 @@ def fetch_image_digest(image_ref: str, tag: str) -> str:
     if not digest:
         raise ValueError(f"{image_ref}:{tag}: no Docker-Content-Digest header")
     return digest
+
+
+def parse_provider(yaml_text: str) -> dict:
+    doc = yaml.safe_load(yaml_text) or {}
+    meta = doc.get("meta") or {}
+    return {
+        "name": meta.get("name", ""),
+        "version": str(meta.get("version", "")),
+        "description": meta.get("description", ""),
+        "tags": list(meta.get("tags") or []),
+        "requires_mgtt": (meta.get("requires") or {}).get("mgtt", ""),
+        "needs": list(doc.get("needs") or []),
+        "network": doc.get("network", ""),
+        "read_only": doc.get("read_only", True),
+        "writes_note": doc.get("writes_note", ""),
+    }
