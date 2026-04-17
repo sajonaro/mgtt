@@ -89,7 +89,13 @@ def on_pre_build(config, **_kwargs):
             )
             sections.append(card)
         except Exception as exc:  # noqa: BLE001 — deliberate fail-soft
-            print(f"registry-generator: {name}: {exc}", file=sys.stderr)
+            import traceback
+            print(f"registry-generator: {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            # One-line traceback so we know which function raised.
+            tb = traceback.extract_tb(exc.__traceback__)
+            if tb:
+                last = tb[-1]
+                print(f"registry-generator: {name}:   at {last.filename}:{last.lineno} in {last.name}", file=sys.stderr)
             sections.append(_error_card(name, entry, exc))
 
     REGISTRY_MD.write_text("\n".join(sections) + "\n")
