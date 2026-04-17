@@ -115,6 +115,10 @@ func installFromImage(ctx context.Context, w io.Writer, ref, nameHint string, do
 		name = p.Meta.Name
 	}
 
+	if len(p.Image.Needs) > 0 {
+		fmt.Fprintf(w, "→ capabilities: %s\n", strings.Join(p.Image.Needs, ", "))
+	}
+
 	providersRoot, err := providersupport.InstallRoot()
 	if err != nil {
 		return fmt.Errorf("get install root: %w", err)
