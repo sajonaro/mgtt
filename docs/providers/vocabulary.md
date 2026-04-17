@@ -5,7 +5,7 @@ The vocabulary (`provider.yaml`) tells mgtt's constraint engine what your techno
 ## On this page
 
 - [Full schema](#full-schema)
-- [Section reference](#section-reference) — meta, types, facts, states, failure_modes
+- [Section reference](#section-reference) — meta, needs, hooks, auth, variables, types, facts, states, failure_modes
 - [Validate your vocabulary](#validate-your-vocabulary)
 - [Next steps](#next-steps)
 
@@ -21,6 +21,8 @@ meta:
   requires:
     mgtt: ">=1.0"
   command: "$MGTT_PROVIDER_DIR/bin/mgtt-provider-my-provider"
+
+needs: [kubectl, network]
 
 hooks:
   install: hooks/install.sh
@@ -95,6 +97,18 @@ Provider identity and binary location.
 | `description` | yes | One-line description. |
 | `requires.mgtt` | yes | Minimum mgtt version (semver range). |
 | `command` | yes | Path to the provider binary. `$MGTT_PROVIDER_DIR` is substituted at runtime with the provider's install directory. Empty string for vocabulary-only providers. |
+
+### `needs`
+
+Optional. Lists named **capabilities** the provider requires at probe time — semantic labels for host resources (kubectl context, AWS creds, Docker socket, network reachability, etc.). A top-level block because these are a property of the provider itself: git installs satisfy them by inheriting the operator's shell; image installs satisfy them via `docker run` bind mounts and env forwards that mgtt wires from the capability vocabulary.
+
+```yaml
+needs: [kubectl, network]
+```
+
+Built-in vocabulary: `network`, `kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`. Operators override or extend via `$MGTT_HOME/capabilities.yaml`. See the [Provider Capabilities reference](../reference/image-capabilities.md) for the full table and operator override mechanics.
+
+Omit the block entirely if your provider reads nothing from the host (e.g., HTTP-only providers configured via `vars:`). Shell-fallback providers (no `meta.command`) must omit it — there's no binary to inject forwards into.
 
 ### `hooks`
 

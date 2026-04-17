@@ -220,7 +220,7 @@ mgtt skips those caps at probe time regardless of what the provider declared; th
 
 Operator-local definitions are perfect for one-off infrastructure. But if a capability generalizes — a new cloud, a new observability backend, a new secret store that many providers will want — it's worth upstreaming into mgtt's built-in map so every provider author picks it up for free. The criterion is usage, not novelty: two providers needing the same forward is enough to justify a built-in.
 
-See the [Image Capabilities reference](../reference/image-capabilities.md) for the full vocabulary, the YAML schema, env-var shortcuts, and failure modes.
+See the [Provider Capabilities reference](../reference/image-capabilities.md) for the full vocabulary, the YAML schema, env-var shortcuts, and failure modes.
 
 ---
 
