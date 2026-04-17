@@ -8,17 +8,14 @@ vars, runs on_pre_build(), and asserts the rendered markdown.
 from __future__ import annotations
 
 import http.server
-import io
 import json
 import os
 import shutil
 import socketserver
-import tarfile
 import threading
 import unittest
-from pathlib import Path
 
-from registry_generator import REGISTRY_MD, on_pre_build
+from registry_generator import CACHE_DIR, REGISTRY_MD, on_pre_build
 
 
 class RegistryGeneratorE2E(unittest.TestCase):
@@ -32,8 +29,7 @@ class RegistryGeneratorE2E(unittest.TestCase):
         self._thread.join()
         for var in ("MGTT_REGISTRY_GITHUB_BASE", "MGTT_REGISTRY_GHCR_BASE"):
             os.environ.pop(var, None)
-        shutil.rmtree(Path(__file__).resolve().parent.parent.parent / ".cache" / "registry-generator",
-                      ignore_errors=True)
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
 
     def test_renders_one_provider_card(self):
         on_pre_build(config=None)
