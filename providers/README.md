@@ -416,6 +416,72 @@ chmod +x bin/mgtt-provider-my-provider
 echo "✓ installed Python provider"
 ```
 
+## Step 4: Publish a Docker Image (optional but recommended)
+
+Providers can be installed two ways:
+
+- **Git install** (`mgtt provider install <url>`) — clones the repo and runs `hooks/install.sh` to build the binary on the host. Requires the Go (or Python, or whatever) toolchain locally.
+- **Image install** (`mgtt provider install --image <ref>@sha256:...`) — pulls a Docker image that ships the compiled binary and the `provider.yaml`. mgtt invokes probes via `docker run` against the image. The host only needs `docker`.
+
+Image install is the recommended distribution path for corporate operators — no local toolchain, digest-pinned reproducibility, and works identically across machines.
+
+### Image Contract
+
+The image must satisfy three requirements:
+
+1. **`/provider.yaml` at the root** — the vocabulary, extracted by mgtt at install time via `docker create` + `docker cp`. Any base image works, including distroless and scratch — mgtt never executes anything inside the container during extraction.
+2. **`ENTRYPOINT` is the provider binary** — mgtt invokes probes with `docker run --rm <image> probe <component> <fact> ...`. The entrypoint must accept the same argv the host-installed binary does.
+3. **Image is digest-pinned when published to the registry** — tags can be re-rolled silently. Always publish (and install) with `@sha256:...`.
+
+### Minimal Dockerfile
+
+```Dockerfile
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /out/mgtt-provider-my-provider .
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/mgtt-provider-my-provider /bin/provider
+COPY provider.yaml /provider.yaml
+COPY types /types
+ENTRYPOINT ["/bin/provider"]
+```
+
+The `COPY types /types` line is only needed for multi-file providers (those that keep one type per file under `types/<name>.yaml`). mgtt's image installer `docker cp`s both `/provider.yaml` and (if present) `/types/` out of the container.
+
+Publish to `ghcr.io` (or any registry) and advertise the digest in your README and the registry entry.
+
+### Runtime caveat: image-runner does not yet forward env or mounts
+
+`mgtt plan` invokes probes on image-installed providers via plain `docker run --rm <image> probe <component> <fact> …`. No host env vars are passed through, no volumes are mounted. That means:
+
+- **Fully self-contained providers** (HTTP to a URL configured via `vars:`) work end-to-end out of the box. Tempo and Quickwit are examples.
+- **Providers that need host credentials** (AWS, Terraform, Kubernetes, Docker) — the CLI ships in the image, but the credential chain (`~/.aws/`, `KUBECONFIG`, `$(pwd)` as Terraform workdir, `/var/run/docker.sock`) is not reachable from inside the container. Operators must either run mgtt in an environment where the container naturally has access (e.g., an in-cluster pod with a service account) or fall back to git install.
+
+Env/volume forwarding is a tracked follow-up on mgtt core; until then, author providers so their `vars:` cover everything they need to configure at runtime, and document any environmental assumptions in the provider README.
+
+### Registry Entry with Image
+
+Your provider's registry entry can declare both install methods:
+
+```yaml
+my-provider:
+  url: https://github.com/my-org/mgtt-provider-my-provider
+  image: ghcr.io/my-org/mgtt-provider-my-provider:0.1.0@sha256:...
+  description: ...
+```
+
+Users pick: `mgtt provider install my-provider` (git) or `mgtt provider install --image ghcr.io/my-org/mgtt-provider-my-provider:0.1.0@sha256:...` (image).
+
+### Install Hooks Don't Run for Image Installs
+
+Image installs skip `hooks/install.sh` entirely — the binary is already baked in. Image uninstalls also skip `hooks/uninstall.sh`; instead `mgtt provider uninstall` prints a `docker rmi` hint so the operator can clean up the image if they want.
+
+If your provider has a meaningful uninstall side effect (e.g., revoking credentials), document it for image users — mgtt can't run arbitrary scripts inside the image at uninstall time.
+
 ## Uninstall Hook (optional)
 
 `hooks/uninstall.sh` runs during `mgtt provider uninstall <name>`, before the
@@ -455,12 +521,31 @@ From a git repository:
 mgtt provider install https://github.com/my-org/mgtt-provider-my-provider
 ```
 
+From a Docker image (digest-pinned):
+```bash
+mgtt provider install --image ghcr.io/my-org/mgtt-provider-my-provider:0.1.0@sha256:...
+```
+
 After install:
 ```bash
-mgtt provider ls                          # verify it shows up
+mgtt provider ls                          # verify it shows up (shows install method: git | image)
 mgtt provider inspect my-provider         # check types and facts
 mgtt provider inspect my-provider server  # detailed type view
 ```
+
+Each install writes a `.mgtt-install.json` into `~/.mgtt/providers/<name>/`:
+
+```json
+{
+  "method": "image",
+  "namespace": "my-org",
+  "source": "ghcr.io/my-org/mgtt-provider-my-provider:0.1.0@sha256:...",
+  "installed_at": "2026-04-17T10:30:00Z",
+  "version": "0.1.0"
+}
+```
+
+mgtt uses this metadata to drive `provider list`, fully-qualified name (FQN) references, and SemVer constraint resolution. See [Provider FQN & Versions](../docs/concepts/provider-fqn-and-versions.md) and [Install Methods](../docs/concepts/provider-install-methods.md).
 
 ## Testing Your Provider
 

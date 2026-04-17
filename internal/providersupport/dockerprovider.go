@@ -1,9 +1,13 @@
 package providersupport
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -54,25 +58,115 @@ func (d *DockerCmd) PullImage(ctx context.Context, ref string) error {
 	return nil
 }
 
-// ExtractManifest runs `docker run --rm --entrypoint cat <ref> /provider.yaml`
-// and returns the file contents. The --entrypoint flag is necessary because
-// provider images declare an ENTRYPOINT (the provider binary); without it,
-// positional args after the image name become arguments to the entrypoint,
-// not a replacement command. The provider image MUST embed its provider.yaml
-// at /provider.yaml — no other location is supported.
+// ExtractManifest creates a container from the image, copies /provider.yaml
+// out of its filesystem, then removes the container. Works for any base
+// image — including distroless and scratch — because nothing inside the
+// container is executed. The provider image MUST embed its provider.yaml
+// at /provider.yaml; no other location is supported.
 //
-// NOTE: the provider image MUST include `cat` on PATH. Base images like
-// debian-slim, alpine, and ubuntu satisfy this; distroless and scratch do NOT.
-// A follow-up task should switch this to `docker cp` to remove the requirement.
+// `docker cp <cid>:/provider.yaml -` emits a tar archive on stdout containing
+// the single file; we decode the first regular-file entry and return its body.
 func (d *DockerCmd) ExtractManifest(ctx context.Context, ref string) ([]byte, error) {
 	if d.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, d.Timeout)
 		defer cancel()
 	}
-	out, err := d.Run(ctx, "run", "--rm", "--entrypoint", "cat", ref, "/provider.yaml")
+
+	cidOut, err := d.Run(ctx, "create", ref)
 	if err != nil {
-		return nil, fmt.Errorf("extract /provider.yaml from %s: %w", ref, err)
+		return nil, fmt.Errorf("docker create %s: %w\n%s", ref, err, cidOut)
+	}
+	cid := strings.TrimSpace(string(cidOut))
+	if cid == "" {
+		return nil, fmt.Errorf("docker create %s: empty container id", ref)
+	}
+	defer func() {
+		_, _ = d.Run(ctx, "rm", "-v", cid)
+	}()
+
+	tarOut, err := d.Run(ctx, "cp", cid+":/provider.yaml", "-")
+	if err != nil {
+		return nil, fmt.Errorf("docker cp /provider.yaml from %s: %w\n%s", ref, err, tarOut)
+	}
+
+	tr := tar.NewReader(bytes.NewReader(tarOut))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("extract /provider.yaml from %s: no regular file in tar stream", ref)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("extract /provider.yaml from %s: read tar header: %w", ref, err)
+		}
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA { //nolint:staticcheck // TypeRegA is legacy but still appears
+			continue
+		}
+		body, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, fmt.Errorf("extract /provider.yaml from %s: read body: %w", ref, err)
+		}
+		return body, nil
+	}
+}
+
+// ExtractTypes pulls the /types/ directory out of the image as a map of
+// filename → contents. Multi-file providers (kubernetes, tempo, quickwit,
+// terraform) declare one type per file under types/; without this step the
+// install directory would only contain provider.yaml and every type would
+// disappear on image install.
+//
+// Returns (nil, nil) when the image has no /types/ directory — inline-types
+// providers are valid and their absence is not an error.
+func (d *DockerCmd) ExtractTypes(ctx context.Context, ref string) (map[string][]byte, error) {
+	if d.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d.Timeout)
+		defer cancel()
+	}
+
+	cidOut, err := d.Run(ctx, "create", ref)
+	if err != nil {
+		return nil, fmt.Errorf("docker create %s: %w\n%s", ref, err, cidOut)
+	}
+	cid := strings.TrimSpace(string(cidOut))
+	if cid == "" {
+		return nil, fmt.Errorf("docker create %s: empty container id", ref)
+	}
+	defer func() {
+		_, _ = d.Run(ctx, "rm", "-v", cid)
+	}()
+
+	tarOut, err := d.Run(ctx, "cp", cid+":/types", "-")
+	if err != nil {
+		// `docker cp` errors on missing source. Accept absence silently so
+		// inline-types providers still install cleanly.
+		return nil, nil
+	}
+
+	out := map[string][]byte{}
+	tr := tar.NewReader(bytes.NewReader(tarOut))
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("extract /types from %s: read tar header: %w", ref, err)
+		}
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA { //nolint:staticcheck // TypeRegA is legacy
+			continue
+		}
+		// Tar entries look like "types/deployment.yaml" — strip the leading dir.
+		base := filepath.Base(hdr.Name)
+		if filepath.Ext(base) != ".yaml" {
+			continue
+		}
+		body, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, fmt.Errorf("extract %s: %w", hdr.Name, err)
+		}
+		out[base] = body
 	}
 	return out, nil
 }
