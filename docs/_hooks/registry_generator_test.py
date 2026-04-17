@@ -8,6 +8,7 @@ vars, runs on_pre_build(), and asserts the rendered markdown.
 from __future__ import annotations
 
 import http.server
+import io
 import json
 import os
 import shutil
@@ -15,7 +16,7 @@ import socketserver
 import threading
 import unittest
 
-from registry_generator import CACHE_DIR, REGISTRY_MD, on_pre_build
+from registry_generator import CACHE_DIR, REGISTRY_MD, load_registry, on_pre_build
 
 
 class RegistryGeneratorE2E(unittest.TestCase):
@@ -100,8 +101,6 @@ def _make_handler():
 
 class LoadRegistryTest(unittest.TestCase):
     def test_parses_minimal_entries(self):
-        import io
-        from registry_generator import load_registry
         entries = load_registry(io.StringIO(
             "providers:\n"
             "  tempo: {url: https://github.com/mgt-tool/mgtt-provider-tempo}\n"
@@ -110,6 +109,10 @@ class LoadRegistryTest(unittest.TestCase):
         self.assertEqual(entries["tempo"]["url"], "https://github.com/mgt-tool/mgtt-provider-tempo")
         self.assertEqual(entries["tempo"]["channel"], "latest-tag")  # default
         self.assertEqual(entries["docker"]["channel"], "main")
+
+    def test_missing_url_raises(self):
+        with self.assertRaisesRegex(ValueError, r"url is required"):
+            load_registry(io.StringIO("providers:\n  bad: {channel: main}\n"))
 
 
 if __name__ == "__main__":
