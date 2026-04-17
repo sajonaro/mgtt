@@ -206,3 +206,89 @@ auth:
 		t.Errorf("corrupt-provider line should contain '?' for unparseable metadata; got:\n%s", corruptLine)
 	}
 }
+
+// TestProviderLs_ShowsCapabilities verifies that image.needs declared in
+// provider.yaml surfaces as a [...] column in the list output, so
+// operators see the runtime scope alongside the install method.
+func TestProviderLs_ShowsCapabilities(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	// Provider that declares caps.
+	capDir := filepath.Join(home, "providers", "capful")
+	if err := os.MkdirAll(capDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	capYAML := []byte(`meta:
+  name: capful
+  version: 1.0.0
+  description: uses host resources
+  command: /bin/capful
+auth:
+  strategy: none
+  access: {probes: none, writes: none}
+image:
+  needs: [kubectl, network]
+`)
+	if err := os.WriteFile(filepath.Join(capDir, "provider.yaml"), capYAML, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Provider that declares no caps (omit the whole block).
+	plainDir := filepath.Join(home, "providers", "plain")
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plainYAML := []byte(`meta:
+  name: plain
+  version: 1.0.0
+  description: no caps needed
+auth:
+  strategy: none
+  access: {probes: none, writes: none}
+`)
+	if err := os.WriteFile(filepath.Join(plainDir, "provider.yaml"), plainYAML, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	names := providersupport.ListEmbedded()
+	var providers []*providersupport.Provider
+	for _, name := range names {
+		p, err := providersupport.LoadEmbedded(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		providers = append(providers, p)
+	}
+
+	var buf bytes.Buffer
+	renderProviderLs(&buf, providers)
+	output := buf.String()
+
+	// capful row must contain the bracketed cap list.
+	var capfulLine, plainLine string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "capful") {
+			capfulLine = line
+		}
+		if strings.Contains(line, "plain") {
+			plainLine = line
+		}
+	}
+	if capfulLine == "" || plainLine == "" {
+		t.Fatalf("both providers must render; got:\n%s", output)
+	}
+	if !strings.Contains(capfulLine, "[kubectl, network]") {
+		t.Errorf("capful line must show bracketed caps; got:\n%s", capfulLine)
+	}
+	if !strings.Contains(plainLine, "-") {
+		t.Errorf("plain line must show '-' for no caps; got:\n%s", plainLine)
+	}
+	// Both lines must be column-aligned on the description.
+	capfulDesc := strings.Index(capfulLine, "uses host resources")
+	plainDesc := strings.Index(plainLine, "no caps needed")
+	if capfulDesc != plainDesc {
+		t.Errorf("description columns misaligned: capful col %d, plain col %d\n%s\n%s",
+			capfulDesc, plainDesc, capfulLine, plainLine)
+	}
+}
