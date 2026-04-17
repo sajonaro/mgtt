@@ -98,5 +98,19 @@ def _make_handler():
     return Handler
 
 
+class LoadRegistryTest(unittest.TestCase):
+    def test_parses_minimal_entries(self):
+        import io
+        from registry_generator import load_registry
+        entries = load_registry(io.StringIO(
+            "providers:\n"
+            "  tempo: {url: https://github.com/mgt-tool/mgtt-provider-tempo}\n"
+            "  docker: {url: https://github.com/mgt-tool/mgtt-provider-docker, channel: main}\n"
+        ))
+        self.assertEqual(entries["tempo"]["url"], "https://github.com/mgt-tool/mgtt-provider-tempo")
+        self.assertEqual(entries["tempo"]["channel"], "latest-tag")  # default
+        self.assertEqual(entries["docker"]["channel"], "main")
+
+
 if __name__ == "__main__":
     unittest.main()
