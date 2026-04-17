@@ -127,6 +127,25 @@ func installFromImage(ctx context.Context, w io.Writer, ref, nameHint string, do
 		return fmt.Errorf("write provider.yaml: %w", err)
 	}
 
+	// Multi-file providers (kubernetes, tempo, quickwit, terraform) keep type
+	// definitions in /types/<name>.yaml. Extract them too when present — a
+	// missing /types/ just means inline types, which is fine.
+	typeFiles, err := docker.ExtractTypes(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("extract /types: %w", err)
+	}
+	if len(typeFiles) > 0 {
+		typesDir := filepath.Join(destDir, "types")
+		if err := os.MkdirAll(typesDir, 0o755); err != nil {
+			return fmt.Errorf("create types dir: %w", err)
+		}
+		for name, body := range typeFiles {
+			if err := os.WriteFile(filepath.Join(typesDir, name), body, 0o644); err != nil {
+				return fmt.Errorf("write type %s: %w", name, err)
+			}
+		}
+	}
+
 	meta := providersupport.InstallMeta{
 		Method:      providersupport.InstallMethodImage,
 		Namespace:   deriveNamespace(ref),

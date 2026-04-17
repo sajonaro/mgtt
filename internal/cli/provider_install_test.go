@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"errors"
@@ -13,6 +14,29 @@ import (
 	"github.com/mgt-tool/mgtt/internal/providersupport"
 	"github.com/mgt-tool/mgtt/internal/registry"
 )
+
+// tarManifest returns the bytes `docker cp cid:/provider.yaml -` would emit:
+// a tar archive containing a single regular-file entry for provider.yaml.
+func tarManifest(t *testing.T, body string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     "provider.yaml",
+		Mode:     0o644,
+		Size:     int64(len(body)),
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
 
 // TestInstallProvider_RegistryDisabledWrapsSentinel verifies that the
 // CLI-layer error wraps registry.ErrRegistryDisabled so callers can
@@ -77,14 +101,18 @@ func TestInstallFromImage_WritesFilesAndMeta(t *testing.T) {
 
 	ref := "ghcr.io/example/test-provider:1.2.3@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
 
-	// Fake docker: pull succeeds silently; extract returns minimalProviderYAML.
+	// Fake docker: pull → create → cp (returns tar stream) → rm.
 	fakeDocker := &providersupport.DockerCmd{
 		Run: func(_ context.Context, args ...string) ([]byte, error) {
 			switch args[0] {
 			case "pull":
 				return []byte("fake pull output"), nil
-			case "run":
-				return []byte(minimalProviderYAML), nil
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				return tarManifest(t, minimalProviderYAML), nil
+			case "rm":
+				return nil, nil
 			default:
 				t.Errorf("unexpected docker subcommand %q", args[0])
 				return nil, nil
@@ -141,6 +169,76 @@ func TestInstallFromImage_WritesFilesAndMeta(t *testing.T) {
 
 }
 
+// TestInstallFromImage_WritesTypesDir verifies that a multi-file provider
+// image (kubernetes-style /types/*.yaml) lands under destDir/types/ after
+// install. Prior to this, only /provider.yaml was extracted and all types
+// silently vanished.
+func TestInstallFromImage_WritesTypesDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	ref := "ghcr.io/example/multi-type:1.0.0@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
+
+	// Build a tar shaped like `docker cp cid:/types -`: a dir entry plus
+	// two regular-file entries.
+	var typesTar bytes.Buffer
+	tw := tar.NewWriter(&typesTar)
+	_ = tw.WriteHeader(&tar.Header{Name: "types/", Mode: 0o755, Typeflag: tar.TypeDir})
+	for name, body := range map[string]string{
+		"deployment.yaml": "description: k8s deployment\n",
+		"service.yaml":    "description: k8s service\n",
+	} {
+		_ = tw.WriteHeader(&tar.Header{
+			Name:     "types/" + name,
+			Mode:     0o644,
+			Size:     int64(len(body)),
+			Typeflag: tar.TypeReg,
+		})
+		_, _ = tw.Write([]byte(body))
+	}
+	_ = tw.Close()
+
+	cpCalls := 0
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			switch args[0] {
+			case "pull":
+				return nil, nil
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				cpCalls++
+				joined := strings.Join(args, " ")
+				switch {
+				case strings.Contains(joined, ":/provider.yaml"):
+					return tarManifest(t, minimalProviderYAML), nil
+				case strings.Contains(joined, ":/types"):
+					return typesTar.Bytes(), nil
+				}
+			case "rm":
+				return nil, nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := installFromImage(context.Background(), &buf, ref, "", fakeDocker); err != nil {
+		t.Fatalf("installFromImage: %v", err)
+	}
+
+	typesDir := filepath.Join(home, "providers", "test-provider", "types")
+	for _, fname := range []string{"deployment.yaml", "service.yaml"} {
+		if _, err := os.Stat(filepath.Join(typesDir, fname)); err != nil {
+			t.Errorf("types file %s missing after image install: %v", fname, err)
+		}
+	}
+	// cp must have been invoked for both /provider.yaml and /types.
+	if cpCalls != 2 {
+		t.Errorf("expected 2 cp calls (manifest + types), got %d", cpCalls)
+	}
+}
+
 // TestInstallFromImage_NameHintOverride verifies that a positional arg overrides
 // the install name from the manifest.
 func TestInstallFromImage_NameHintOverride(t *testing.T) {
@@ -151,8 +249,11 @@ func TestInstallFromImage_NameHintOverride(t *testing.T) {
 
 	fakeDocker := &providersupport.DockerCmd{
 		Run: func(_ context.Context, args ...string) ([]byte, error) {
-			if args[0] == "run" {
-				return []byte(minimalProviderYAML), nil
+			switch args[0] {
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				return tarManifest(t, minimalProviderYAML), nil
 			}
 			return nil, nil
 		},
@@ -184,9 +285,12 @@ func TestInstallFromImage_RejectsMalformedManifest(t *testing.T) {
 
 	fakeDocker := &providersupport.DockerCmd{
 		Run: func(_ context.Context, args ...string) ([]byte, error) {
-			// Pull succeeds; extract returns garbage YAML.
-			if args[0] == "run" {
-				return []byte("not: [valid yaml"), nil
+			switch args[0] {
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				// extract returns garbage YAML (wrapped in a valid tar entry).
+				return tarManifest(t, "not: [valid yaml"), nil
 			}
 			return nil, nil
 		},
