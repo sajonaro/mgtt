@@ -19,6 +19,7 @@ import unittest
 from registry_generator import (
     CACHE_DIR,
     REGISTRY_MD,
+    cached_fetch,
     fetch_image_digest,
     fetch_provider_yaml,
     load_registry,
@@ -259,6 +260,32 @@ class RenderCardTest(unittest.TestCase):
         )
         self.assertNotIn("--image", text)
         self.assertNotIn("sha256:", text)
+
+
+class CacheTest(unittest.TestCase):
+    def setUp(self):
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+
+    def test_cached_fetch_hits_once(self):
+        """Second call for the same key must be served from disk cache."""
+        from registry_generator import cached_fetch
+        calls = []
+        def fake_fetch():
+            calls.append(1)
+            return "payload"
+        a = cached_fetch("k-123", fake_fetch)
+        b = cached_fetch("k-123", fake_fetch)
+        self.assertEqual(a, b)
+        self.assertEqual(len(calls), 1)
+
+    def test_cache_expires(self):
+        from registry_generator import cached_fetch
+        key = "k-expire"
+        cached_fetch(key, lambda: "old")
+        # Backdate mtime so TTL check fails.
+        os.utime(CACHE_DIR / key, (0, 0))  # epoch — >> 1 hour ago
+        got = cached_fetch(key, lambda: "new")
+        self.assertEqual(got, "new")
 
 
 if __name__ == "__main__":
