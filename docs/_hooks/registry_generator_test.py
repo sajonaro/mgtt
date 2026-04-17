@@ -96,6 +96,12 @@ def _make_handler():
                     "encoding": "base64",
                 }).encode()
                 self._respond(200, body, "application/json")
+            elif path.endswith("/token"):
+                self._respond(
+                    200,
+                    json.dumps({"token": "stub-ghcr-token"}).encode(),
+                    "application/json",
+                )
             elif "/manifests/" in self.path:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")

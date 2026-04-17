@@ -91,11 +91,19 @@ def on_pre_build(config, **_kwargs):
         except Exception as exc:  # noqa: BLE001 — deliberate fail-soft
             import traceback
             print(f"registry-generator: {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
-            # One-line traceback so we know which function raised.
             tb = traceback.extract_tb(exc.__traceback__)
-            if tb:
-                last = tb[-1]
-                print(f"registry-generator: {name}:   at {last.filename}:{last.lineno} in {last.name}", file=sys.stderr)
+            # Surface the deepest frame inside registry_generator.py so we
+            # know which fetch (resolve_ref / fetch_provider_yaml /
+            # fetch_image_digest) actually raised — the urllib-internal
+            # leaf frame is not useful.
+            for frame in reversed(tb):
+                if "registry_generator" in frame.filename:
+                    print(
+                        f"registry-generator: {name}:   in {frame.name} "
+                        f"({frame.filename}:{frame.lineno})",
+                        file=sys.stderr,
+                    )
+                    break
             sections.append(_error_card(name, entry, exc))
 
     REGISTRY_MD.write_text("\n".join(sections) + "\n")
@@ -287,15 +295,30 @@ def fetch_image_digest(image_ref: str, tag: str) -> str:
     owner_repo = path.replace("/", "-")
 
     def _fetch() -> str:
+        # GHCR requires a bearer token on /v2/ even for public packages,
+        # and the workflow's GITHUB_TOKEN is scoped to its own repo — it
+        # can't pull packages published by other repos' workflows (403).
+        # Use the token-exchange endpoint to mint an anonymous read-only
+        # token for the specific package; this is what `docker pull`
+        # does under the hood for public images.
+        token_url = (
+            f"{_ghcr_base()}/token?service=ghcr.io&scope=repository:{path}:pull"
+        )
+        with urllib.request.urlopen(token_url, timeout=15) as tresp:
+            token = json.loads(tresp.read()).get("token", "")
+        if not token:
+            raise ValueError(f"{image_ref}: GHCR token endpoint returned empty token")
+
         url = f"{_ghcr_base()}/v2/{path}/manifests/{tag}"
         req = urllib.request.Request(url)
         req.add_header(
             "Accept",
             "application/vnd.docker.distribution.manifest.v2+json, "
-            "application/vnd.oci.image.manifest.v1+json",
+            "application/vnd.oci.image.manifest.v1+json, "
+            "application/vnd.oci.image.index.v1+json, "
+            "application/vnd.docker.distribution.manifest.list.v2+json",
         )
-        if token := os.environ.get("GITHUB_TOKEN"):
-            req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(req, timeout=15) as resp:
             digest = resp.headers.get("Docker-Content-Digest")
         if not digest:
