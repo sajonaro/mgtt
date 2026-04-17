@@ -23,7 +23,7 @@ https://mgt-tool.github.io/mgtt/registry.yaml
 | [tempo](https://github.com/mgt-tool/mgtt-provider-tempo) | Per-span SLO checks against Grafana Tempo — current_p99, breach_duration, error_rate | `network` | tracing, otel, grafana, slo | `mgtt provider install tempo` |
 | [quickwit](https://github.com/mgt-tool/mgtt-provider-quickwit) | Cross-span tracing checks against Quickwit — transaction_flow, async_hop, consumer_health | `network` | tracing, otel, quickwit, slo, async | `mgtt provider install quickwit` |
 
-The **Capabilities** column lists what each provider declares in its `provider.yaml` `image.needs` block — the host resources mgtt forwards when you install via `mgtt provider install --image`. See [Image Capabilities](./image-capabilities.md) for what each label expands to (bind mounts, env forwards, `--network host`) and how operators override or refuse them. Git-installed providers don't go through this layer; capabilities only affect the `--image` path.
+The **Capabilities** column lists what each provider declares in its `provider.yaml` top-level `needs:` block — the host resources the provider needs at probe time. Image-installed providers have these forwarded via `docker run` flags; git-installed providers inherit them from the operator's shell. See [Provider Capabilities](./image-capabilities.md) for what each label expands to and how operators override or refuse them.
 
 Run `mgtt provider inspect <name>` after install to see the full type catalog.
 

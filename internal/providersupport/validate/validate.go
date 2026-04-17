@@ -131,19 +131,20 @@ func Static(p *providersupport.Provider) Report {
 		}
 	}
 
-	// image.needs: every declared cap must resolve against the merged
+	// needs: every declared capability must resolve against the merged
 	// vocabulary (built-ins + operator overrides). Shell-fallback providers
-	// (no meta.command) cannot declare caps — there's no binary in the
-	// image to inject them into.
-	if len(p.Image.Needs) > 0 {
+	// (no meta.command) cannot declare needs — they have no binary, which
+	// means there's no image install target and no process whose environment
+	// mgtt would forward anything into.
+	if len(p.Needs) > 0 {
 		if p.Meta.Command == "" {
 			r.Failures = append(r.Failures,
-				"image.needs declared but provider has no command (shell-fallback providers don't support image install)")
+				"needs declared but provider has no command (shell-fallback providers don't support image install)")
 		}
-		for _, n := range p.Image.Needs {
+		for _, n := range p.Needs {
 			if !probe.Known(n) {
 				r.Failures = append(r.Failures, fmt.Sprintf(
-					"unknown image capability %q (known: %s); add it to $MGTT_HOME/capabilities.yaml or remove from image.needs",
+					"unknown capability %q (known: %s); add it to $MGTT_HOME/capabilities.yaml or remove from needs",
 					n, joinNames(probe.KnownNames())))
 			}
 		}

@@ -144,12 +144,13 @@ Two obvious approaches — both wrong:
 
 ### The design — named capabilities
 
-Providers declare **semantic labels** in `provider.yaml`:
+Providers declare **semantic labels** in `provider.yaml`, at the top level:
 
 ```yaml
-image:
-  needs: [kubectl, network]
+needs: [kubectl, network]
 ```
+
+Top-level because these are the provider's *requirements*, not the image runner's *configuration*. A git-installed kubernetes provider also "needs" kubectl and cluster network — it just gets them by inheritance. The `image` runner is the install method that translates `needs` into explicit `docker run` forwards.
 
 mgtt owns the vocabulary — the mapping from label to `docker run` flags:
 
@@ -173,7 +174,7 @@ This is the same pattern snap (`plugs: [docker-support]`) and flatpak (`--socket
 
 Every surface that lists providers now shows capabilities:
 
-- `provider.yaml` — `image:` block at the top, right after `meta:`.
+- `provider.yaml` — top-level `needs:` block, right after `meta:`.
 - [`docs/registry.yaml`](../reference/registry.md) — `capabilities: [...]` per registry entry.
 - `mgtt provider install --image …` prints `→ capabilities: kubectl, network` before the install completes.
 - `mgtt provider ls` shows a bracketed cap column per installed provider.

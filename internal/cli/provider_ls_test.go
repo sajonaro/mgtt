@@ -227,8 +227,8 @@ func TestProviderLs_ShowsCapabilities(t *testing.T) {
 auth:
   strategy: none
   access: {probes: none, writes: none}
-image:
-  needs: [kubectl, network]
+
+needs: [kubectl, network]
 `)
 	if err := os.WriteFile(filepath.Join(capDir, "provider.yaml"), capYAML, 0o644); err != nil {
 		t.Fatal(err)

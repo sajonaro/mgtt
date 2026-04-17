@@ -12,15 +12,16 @@ type Provider struct {
 	Types     map[string]*Type
 	Variables map[string]Variable
 	Auth      AuthSpec
-	Image     ImageSpec
-}
 
-// ImageSpec carries image-install runtime metadata. Populated from the
-// optional `image:` block in provider.yaml.
-type ImageSpec struct {
-	// Needs lists named capabilities the provider wants the image runner
-	// to inject as docker-run flags (e.g., "kubectl", "docker", "network").
-	// Expansion lives in internal/providersupport/probe/capabilities.go.
+	// Needs lists named capabilities the provider requires at probe time
+	// (e.g., "kubectl", "docker", "network"). Top-level because the
+	// underlying requirement ("this provider needs kubectl tools and
+	// cluster network") is a property of the provider regardless of
+	// install method — git installs satisfy needs by inheriting the
+	// operator's shell environment; image installs satisfy them via
+	// docker-run flag forwarding done by internal/providersupport/probe/
+	// capabilities.go. Populated from the top-level `needs:` block in
+	// provider.yaml.
 	Needs []string
 }
 

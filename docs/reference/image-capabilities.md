@@ -1,17 +1,18 @@
-# Image Capabilities
+# Provider Capabilities
 
-`mgtt provider install --image` pulls a provider image; `mgtt plan` runs probes against it via `docker run`. This page is the reference for the **capability vocabulary** that bridges the two — the named labels a provider declares so that `docker run` is invoked with the right bind mounts and env forwards.
+Providers declare **what they need from the environment** at probe time. Git-installed providers get those needs satisfied for free (the binary inherits the operator's shell). Image-installed providers depend on mgtt forwarding bind mounts and env vars via `docker run` flags. This page is the reference for the capability vocabulary that drives the latter.
 
 ## Declaring capabilities
 
-In your `provider.yaml`:
+In your `provider.yaml`, at the top level:
 
 ```yaml
-image:
-  needs: [kubectl, network]
+needs: [kubectl, network]
 ```
 
-`image.needs` is optional. Providers that don't talk to host resources (tempo, quickwit — they configure their URL via `vars:`) can omit it entirely.
+`needs` is optional. Providers that don't talk to host resources (tempo, quickwit — they configure their URL via `vars:`) can omit it entirely.
+
+Top-level because a provider's environmental requirements are a property of the provider itself, not of any one install method. The `image` runner is the subsystem that today translates `needs` into `docker run` flags; if new install methods land, the same vocabulary applies — no schema change.
 
 ## Built-in vocabulary
 
@@ -68,4 +69,4 @@ Comma-separated list. mgtt refuses to inject these capabilities regardless of pr
 
 ## Validation
 
-`mgtt provider validate` and `mgtt provider install --image` both check `image.needs` against the merged vocabulary (built-ins ∪ operator file ∪ env overrides). Unknown caps fail with a message naming the offending label and the known-names list. Shell-fallback providers (no `meta.command`) cannot declare capabilities — there's no binary in the image to inject them into.
+`mgtt provider validate` and `mgtt provider install --image` both check `needs` against the merged vocabulary (built-ins ∪ operator file ∪ env overrides). Unknown caps fail with a message naming the offending label and the known-names list. Shell-fallback providers (no `meta.command`) cannot declare capabilities — there's no binary to run, so no install method has anything to inject them into.

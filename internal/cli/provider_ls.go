@@ -69,8 +69,8 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 		// docker-run flags), but rendering them for git installs too is
 		// fine: it's still a declared part of the provider contract.
 		caps := "-"
-		if len(p.Image.Needs) > 0 {
-			caps = "[" + joinNeeds(p.Image.Needs) + "]"
+		if len(p.Needs) > 0 {
+			caps = "[" + joinNeeds(p.Needs) + "]"
 		}
 		rows = append(rows, providerRow{
 			displayName: displayName,

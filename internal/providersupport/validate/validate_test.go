@@ -148,9 +148,9 @@ func containsAny(xs []string, sub string) bool {
 	return false
 }
 
-func TestStatic_RejectsUnknownImageCap(t *testing.T) {
+func TestStatic_RejectsUnknownCap(t *testing.T) {
 	p := loadYAML(t, minimalOK)
-	p.Image.Needs = []string{"kubectl", "vault-nope"}
+	p.Needs = []string{"kubectl", "vault-nope"}
 	r := Static(p)
 	if r.OK() {
 		t.Fatal("expected validation failure for unknown cap")
@@ -170,14 +170,14 @@ func TestStatic_RejectsUnknownImageCap(t *testing.T) {
 func TestStatic_RejectsNeedsOnShellFallback(t *testing.T) {
 	p := loadYAML(t, minimalOK)
 	p.Meta.Command = "" // shell-fallback
-	p.Image.Needs = []string{"network"}
+	p.Needs = []string{"network"}
 	r := Static(p)
 	if r.OK() {
-		t.Fatal("shell-fallback providers must not declare image.needs")
+		t.Fatal("shell-fallback providers must not declare needs")
 	}
 	found := false
 	for _, f := range r.Failures {
-		if strings.Contains(f, "image.needs") && strings.Contains(f, "no command") {
+		if strings.Contains(f, "needs") && strings.Contains(f, "no command") {
 			found = true
 			break
 		}
@@ -187,12 +187,12 @@ func TestStatic_RejectsNeedsOnShellFallback(t *testing.T) {
 	}
 }
 
-func TestStatic_AcceptsKnownImageCaps(t *testing.T) {
+func TestStatic_AcceptsKnownCaps(t *testing.T) {
 	p := loadYAML(t, minimalOK)
-	p.Image.Needs = []string{"kubectl", "network"}
+	p.Needs = []string{"kubectl", "network"}
 	r := Static(p)
 	for _, f := range r.Failures {
-		if strings.Contains(f, "image.needs") || strings.Contains(f, "capability") {
+		if strings.Contains(f, "needs") || strings.Contains(f, "capability") {
 			t.Errorf("known caps must not produce failures; got %v", r.Failures)
 		}
 	}

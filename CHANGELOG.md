@@ -8,7 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Image runner capabilities.** Image-installed providers now declare semantic needs in `provider.yaml` (`image.needs: [kubectl, network]`); mgtt expands each label into the matching `docker run` bind mounts and env forwards at probe time. Built-in vocabulary covers `network`, `kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`. Operators override or extend via `$MGTT_HOME/capabilities.yaml` (+ `capabilities.d/*.yaml` shards) or `MGTT_IMAGE_CAP_<NAME>` env vars; `MGTT_IMAGE_CAPS_DENY=docker,aws` refuses capabilities regardless of declaration. Install-time prints declared caps for audit. Validation rejects unknown caps and refuses `image.needs` on shell-fallback providers. See `docs/reference/image-capabilities.md`.
+- **Provider capabilities.** Providers declare semantic needs at the top level of `provider.yaml` (`needs: [kubectl, network]`); mgtt's image runner expands each label into the matching `docker run` bind mounts and env forwards at probe time (git installs inherit them from the operator's shell). Built-in vocabulary covers `network`, `kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`. Operators override or extend via `$MGTT_HOME/capabilities.yaml` (+ `capabilities.d/*.yaml` shards) or `MGTT_IMAGE_CAP_<NAME>` env vars; `MGTT_IMAGE_CAPS_DENY=docker,aws` refuses capabilities regardless of declaration. Install-time prints declared caps for audit. `mgtt provider ls` shows a caps column per installed provider. Validation rejects unknown caps and refuses `needs` on shell-fallback providers. See `docs/reference/image-capabilities.md`.
+
+### Breaking
+
+- Schema: capabilities moved from `image.needs: [...]` to a top-level `needs: [...]` block in `provider.yaml`. The underlying requirement ("this provider needs kubectl") is a property of the provider, not of the image-install runtime that happens to translate it into flags. Pre-1.0, ripped without an alias — providers must update their YAML. External provider repos tracked in the registry have been updated in the same release.
 
 ### Fixed
 
