@@ -482,3 +482,53 @@ image:
 		t.Errorf("install must print declared caps; got %q", out)
 	}
 }
+
+func TestInstallFromImage_RejectsUnknownCap(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	ref := "ghcr.io/example/bogus:1.0.0@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
+
+	const unknownCapYAML = `
+meta:
+  name: bogus
+  version: 1.0.0
+  command: /bin/provider
+auth:
+  strategy: none
+  access: {probes: none, writes: none}
+image:
+  needs: [vault-nope]
+`
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			switch args[0] {
+			case "pull":
+				return nil, nil
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				if strings.Contains(strings.Join(args, " "), ":/provider.yaml") {
+					return tarManifest(t, unknownCapYAML), nil
+				}
+				return nil, errors.New("no /types")
+			case "rm":
+				return nil, nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(context.Background(), &buf, ref, "", fakeDocker)
+	if err == nil {
+		t.Fatal("expected install to fail on unknown capability")
+	}
+	if !strings.Contains(err.Error(), "vault-nope") {
+		t.Errorf("error must name the unknown capability; got %v", err)
+	}
+	// No dir should have been created.
+	if _, statErr := os.Stat(filepath.Join(home, "providers", "bogus")); !os.IsNotExist(statErr) {
+		t.Errorf("no install dir should exist after cap-validation failure; stat err=%v", statErr)
+	}
+}
