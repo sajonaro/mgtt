@@ -5,6 +5,11 @@ Wired in mkdocs.yml under `hooks:`. Runs once per build via on_pre_build.
 
 from __future__ import annotations
 
+import base64
+import json
+import os
+import re
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -33,3 +38,58 @@ def load_registry(stream) -> dict[str, dict]:
             raise ValueError(f"registry entry {name!r}: url is required")
         out[name] = merged
     return out
+
+
+def _github_base() -> str:
+    return os.environ.get("MGTT_REGISTRY_GITHUB_BASE", "https://api.github.com")
+
+
+def _parse_repo(repo_url: str) -> tuple[str, str]:
+    m = re.match(r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", repo_url)
+    if not m:
+        raise ValueError(f"unsupported repo URL: {repo_url!r}")
+    return m.group(1), m.group(2)
+
+
+def _github_get(path: str) -> bytes:
+    req = urllib.request.Request(f"{_github_base()}{path}")
+    req.add_header("Accept", "application/vnd.github+json")
+    if token := os.environ.get("GITHUB_TOKEN"):
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.read()
+
+
+_SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)")
+
+
+def resolve_ref(repo_url: str, channel: str) -> str:
+    """Resolve the channel spec to a concrete git ref (tag name or branch)."""
+    if channel == "main":
+        return "main"
+    if channel != "latest-tag":
+        return channel  # caller passed a specific tag
+    owner, repo = _parse_repo(repo_url)
+    raw = _github_get(f"/repos/{owner}/{repo}/tags")
+    tags = json.loads(raw)
+    best = None
+    for t in tags:
+        name = t["name"]
+        m = _SEMVER_RE.match(name)
+        if not m:
+            continue
+        parts = tuple(int(p) for p in m.groups())
+        if best is None or parts > best[0]:
+            best = (parts, name)
+    if best is None:
+        raise ValueError(f"{owner}/{repo}: no v* semver tags found")
+    return best[1]
+
+
+def fetch_provider_yaml(repo_url: str, ref: str) -> str:
+    owner, repo = _parse_repo(repo_url)
+    raw = _github_get(f"/repos/{owner}/{repo}/contents/provider.yaml?ref={ref}")
+    obj = json.loads(raw)
+    if obj.get("encoding") != "base64":
+        raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
+    return base64.b64decode(obj["content"]).decode("utf-8")
