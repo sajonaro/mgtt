@@ -16,7 +16,14 @@ import socketserver
 import threading
 import unittest
 
-from registry_generator import CACHE_DIR, REGISTRY_MD, load_registry, on_pre_build
+from registry_generator import (
+    CACHE_DIR,
+    REGISTRY_MD,
+    fetch_provider_yaml,
+    load_registry,
+    on_pre_build,
+    resolve_ref,
+)
 
 
 class RegistryGeneratorE2E(unittest.TestCase):
@@ -113,6 +120,32 @@ class LoadRegistryTest(unittest.TestCase):
     def test_missing_url_raises(self):
         with self.assertRaisesRegex(ValueError, r"url is required"):
             load_registry(io.StringIO("providers:\n  bad: {channel: main}\n"))
+
+
+class GitHubFetchTest(unittest.TestCase):
+    def setUp(self):
+        self._server, self._thread, self._base = start_stub_server()
+        os.environ["MGTT_REGISTRY_GITHUB_BASE"] = self._base + "/github"
+
+    def tearDown(self):
+        self._server.shutdown()
+        self._thread.join()
+        os.environ.pop("MGTT_REGISTRY_GITHUB_BASE", None)
+
+    def test_latest_tag_resolves_highest_semver(self):
+        ref = resolve_ref("https://github.com/mgt-tool/mgtt-provider-tempo", "latest-tag")
+        self.assertEqual(ref, "v0.2.0")
+
+    def test_explicit_tag_passthrough(self):
+        self.assertEqual(resolve_ref("https://github.com/x/y", "v1.2.3"), "v1.2.3")
+
+    def test_main_channel_resolves_to_branch_name(self):
+        self.assertEqual(resolve_ref("https://github.com/x/y", "main"), "main")
+
+    def test_fetch_provider_yaml(self):
+        text = fetch_provider_yaml("https://github.com/mgt-tool/mgtt-provider-tempo", "v0.2.0")
+        self.assertIn("name: tempo", text)
+        self.assertIn("version: 0.2.0", text)
 
 
 if __name__ == "__main__":
