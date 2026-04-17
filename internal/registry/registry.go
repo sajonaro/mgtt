@@ -47,12 +47,17 @@ var ErrRegistryDisabled = errors.New("registry: disabled by configuration")
 
 // Entry is a single provider in the registry. Tags summarise the
 // provider's coverage at a high level — the authoritative type list lives in
-// the provider's own provider.yaml.
+// the provider's own provider.yaml. Capabilities duplicates the
+// provider.yaml image.needs list so registry readers can see at a glance
+// what host resources an image-installed provider will expect to be
+// forwarded (kubectl, docker socket, aws credentials, etc.) before they
+// commit to pulling it.
 type Entry struct {
-	URL         string   `yaml:"url"`
-	Image       string   `yaml:"image,omitempty"`
-	Description string   `yaml:"description"`
-	Tags        []string `yaml:"tags"`
+	URL          string   `yaml:"url"`
+	Image        string   `yaml:"image,omitempty"`
+	Description  string   `yaml:"description"`
+	Tags         []string `yaml:"tags"`
+	Capabilities []string `yaml:"capabilities,omitempty"`
 }
 
 // Registry is the parsed registry index.

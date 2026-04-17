@@ -190,3 +190,48 @@ func TestEntry_ImageIsOptional(t *testing.T) {
 		t.Errorf("expected empty Image when omitted, got %q", reg.Providers["foo"].Image)
 	}
 }
+
+func TestFetch_ParsesCapabilities(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "registry.yaml")
+	body := []byte(`providers:
+  kubernetes:
+    url: https://github.com/x/y
+    description: k8s
+    capabilities: [kubectl, network]
+  tempo:
+    url: https://github.com/x/tempo
+    description: tempo
+    # no capabilities field — omitempty on the struct means nil slice
+`)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MGTT_REGISTRY_URL", "")
+	reg, err := Fetch(Source{URL: "file://" + path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, ok := reg.Lookup("kubernetes")
+	if !ok {
+		t.Fatal("kubernetes entry missing")
+	}
+	if len(k.Capabilities) != 2 || k.Capabilities[0] != "kubectl" || k.Capabilities[1] != "network" {
+		t.Errorf("want [kubectl network], got %v", k.Capabilities)
+	}
+	tempo, _ := reg.Lookup("tempo")
+	if tempo.Capabilities != nil {
+		t.Errorf("missing capabilities must parse as nil; got %v", tempo.Capabilities)
+	}
+
+	// Verify the serialization round-trip: an Entry with no capabilities
+	// must NOT emit a `capabilities: []` line (omitempty). This keeps
+	// the registry YAML tidy for providers that need nothing special.
+	out, err := yaml.Marshal(Entry{URL: "u", Description: "d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "capabilities") {
+		t.Errorf("nil Capabilities must be omitted; got %q", out)
+	}
+}
