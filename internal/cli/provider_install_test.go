@@ -433,3 +433,52 @@ func TestInstallFromImage_RejectsBareTag(t *testing.T) {
 		t.Errorf("error should mention sha256; got %q", err.Error())
 	}
 }
+
+func TestInstallFromImage_PrintsDeclaredCaps(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	ref := "ghcr.io/example/capped:1.0.0@sha256:deadbeefdeadbeefdeadbeefdeadbeef"
+
+	const capsProviderYAML = `
+meta:
+  name: capped
+  version: 1.0.0
+  command: /bin/provider
+auth:
+  strategy: none
+  access: {probes: none, writes: none}
+image:
+  needs: [kubectl, network]
+`
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			switch args[0] {
+			case "pull":
+				return nil, nil
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				joined := strings.Join(args, " ")
+				if strings.Contains(joined, ":/provider.yaml") {
+					return tarManifest(t, capsProviderYAML), nil
+				}
+				// /types missing → no types. DockerCmd.ExtractTypes treats
+				// cp-error as "no types"; we return an error to exercise that.
+				return nil, errors.New("no such path")
+			case "rm":
+				return nil, nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := installFromImage(context.Background(), &buf, ref, "", fakeDocker); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "capabilities: kubectl, network") {
+		t.Errorf("install must print declared caps; got %q", out)
+	}
+}
