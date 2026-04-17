@@ -104,6 +104,7 @@ $ mgtt plan
 - [How It Works](concepts/how-it-works.md) — the constraint engine and dependency graph
 - [Simulation walkthrough](concepts/simulation.md) — design-time model validation
 - [Troubleshooting walkthrough](concepts/troubleshooting.md) — runtime incident response
+- [Using Providers](concepts/using-providers.md) — how mgtt invokes providers, capability forwarding, operator controls
 
 ## Reference
 
