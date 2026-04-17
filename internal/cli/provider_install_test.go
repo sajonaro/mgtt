@@ -448,8 +448,8 @@ meta:
 auth:
   strategy: none
   access: {probes: none, writes: none}
-image:
-  needs: [kubectl, network]
+
+needs: [kubectl, network]
 `
 	fakeDocker := &providersupport.DockerCmd{
 		Run: func(_ context.Context, args ...string) ([]byte, error) {
@@ -497,8 +497,8 @@ meta:
 auth:
   strategy: none
   access: {probes: none, writes: none}
-image:
-  needs: [vault-nope]
+
+needs: [vault-nope]
 `
 	fakeDocker := &providersupport.DockerCmd{
 		Run: func(_ context.Context, args ...string) ([]byte, error) {
