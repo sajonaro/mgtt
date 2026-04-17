@@ -164,7 +164,14 @@ _SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 def resolve_ref(repo_url: str, channel: str) -> str:
-    """Resolve the channel spec to a concrete git ref (tag name or branch)."""
+    """Resolve the channel spec to a concrete git ref (tag name or branch).
+
+    Uses `git ls-remote --tags` rather than the GitHub REST API because
+    GitHub aggressively 403s anonymous API traffic from its own Actions
+    runners, and the workflow's GITHUB_TOKEN is scoped to a single repo.
+    `git ls-remote` is auth-free for public repos and is what git itself
+    uses for tag discovery.
+    """
     if channel == "main":
         return "main"
     if channel != "latest-tag":
@@ -172,23 +179,49 @@ def resolve_ref(repo_url: str, channel: str) -> str:
     owner, repo = _parse_repo(repo_url)
 
     def _fetch_tags() -> str:
-        pages = []
-        for page in range(1, 4):  # at most 300 tags; refuse to walk further
-            raw = _github_get(f"/repos/{owner}/{repo}/tags?per_page=100&page={page}").decode()
-            pages.append(raw)
-            page_data = json.loads(raw)
-            if len(page_data) < 100:
-                break
-        merged = []
-        for page_raw in pages:
-            merged.extend(json.loads(page_raw))
-        return json.dumps(merged)
+        # Test mode: MGTT_REGISTRY_GITHUB_BASE indicates the e2e stub
+        # server is handling traffic. Hit its Contents API /tags path
+        # (JSON shape) so the stub doesn't need to speak the git wire
+        # protocol.
+        if os.environ.get("MGTT_REGISTRY_GITHUB_BASE"):
+            pages = []
+            for page in range(1, 4):  # at most 300 tags
+                raw = _github_get(f"/repos/{owner}/{repo}/tags?per_page=100&page={page}").decode()
+                pages.append(raw)
+                page_data = json.loads(raw)
+                if len(page_data) < 100:
+                    break
+            # Convert to git-ls-remote text shape so the parser below
+            # handles stub + real git output with one code path.
+            lines = []
+            for page_raw in pages:
+                for t in json.loads(page_raw):
+                    lines.append(f"{t.get('commit',{}).get('sha','')}\trefs/tags/{t['name']}")
+            return "\n".join(lines) + ("\n" if lines else "")
+
+        # Production: git ls-remote --tags prints lines like
+        #   <sha>\trefs/tags/v1.2.3
+        # (+ occasionally a ^{} dereference line for annotated tags;
+        # we skip those — the object they point at is the same tag name.)
+        import subprocess
+        out = subprocess.check_output(
+            ["git", "ls-remote", "--tags", repo_url],
+            timeout=30,
+            text=True,
+        )
+        return out
 
     raw = cached_fetch(f"tags-{owner}-{repo}", _fetch_tags)
-    tags = json.loads(raw)
     best = None
-    for t in tags:
-        name = t["name"]
+    for line in raw.splitlines():
+        if "\t" not in line:
+            continue
+        _sha, ref = line.split("\t", 1)
+        if not ref.startswith("refs/tags/"):
+            continue
+        name = ref[len("refs/tags/"):]
+        if name.endswith("^{}"):
+            continue
         m = _SEMVER_RE.match(name)
         if not m:
             continue
@@ -201,16 +234,31 @@ def resolve_ref(repo_url: str, channel: str) -> str:
 
 
 def fetch_provider_yaml(repo_url: str, ref: str) -> str:
+    """Fetch manifest.yaml at <ref> via raw.githubusercontent.com.
+
+    Raw is CDN-backed, auth-free for public repos, and isn't subject
+    to the same 403 rate limits as the REST API. If the workflow runs
+    against the test stub, MGTT_REGISTRY_GITHUB_BASE points the call
+    at the stub's Contents API endpoint instead.
+    """
     owner, repo = _parse_repo(repo_url)
 
     def _fetch() -> str:
-        raw = _github_get(f"/repos/{owner}/{repo}/contents/manifest.yaml?ref={ref}")
-        obj = json.loads(raw)
-        if obj.get("encoding") != "base64":
-            raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
-        if "content" not in obj:
-            raise ValueError(f"{owner}/{repo}@{ref}: API response lacks 'content'")
-        return base64.b64decode(obj["content"]).decode("utf-8")
+        # In production: hit raw.githubusercontent.com. In tests: hit the
+        # Contents API stub via MGTT_REGISTRY_GITHUB_BASE (same behavior
+        # the stub already mocks).
+        if os.environ.get("MGTT_REGISTRY_GITHUB_BASE"):
+            raw = _github_get(f"/repos/{owner}/{repo}/contents/manifest.yaml?ref={ref}")
+            obj = json.loads(raw)
+            if obj.get("encoding") != "base64":
+                raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
+            if "content" not in obj:
+                raise ValueError(f"{owner}/{repo}@{ref}: API response lacks 'content'")
+            return base64.b64decode(obj["content"]).decode("utf-8")
+        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/manifest.yaml"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.read().decode("utf-8")
 
     return cached_fetch(f"yaml-{owner}-{repo}-{ref}", _fetch)
 
