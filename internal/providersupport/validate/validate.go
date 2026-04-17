@@ -17,6 +17,7 @@ import (
 
 	"github.com/mgt-tool/mgtt/internal/expr"
 	"github.com/mgt-tool/mgtt/internal/providersupport"
+	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
 )
 
 // Report holds the outcome of validation. OK reports whether any failures
@@ -130,10 +131,41 @@ func Static(p *providersupport.Provider) Report {
 		}
 	}
 
+	// image.needs: every declared cap must resolve against the merged
+	// vocabulary (built-ins + operator overrides). Shell-fallback providers
+	// (no meta.command) cannot declare caps — there's no binary in the
+	// image to inject them into.
+	if len(p.Image.Needs) > 0 {
+		if p.Meta.Command == "" {
+			r.Failures = append(r.Failures,
+				"image.needs declared but provider has no command (shell-fallback providers don't support image install)")
+		}
+		for _, n := range p.Image.Needs {
+			if !probe.Known(n) {
+				r.Failures = append(r.Failures, fmt.Sprintf(
+					"unknown image capability %q (known: %s); add it to $MGTT_HOME/capabilities.yaml or remove from image.needs",
+					n, joinNames(probe.KnownNames())))
+			}
+		}
+	}
+
 	if r.OK() && len(r.Warnings) == 0 {
 		r.Passed = append(r.Passed, "static checks: ok")
 	}
 	return r
+}
+
+// joinNames is a tiny wrapper that avoids importing strings twice when the
+// surrounding file doesn't already use it.
+func joinNames(names []string) string {
+	out := ""
+	for i, n := range names {
+		if i > 0 {
+			out += ", "
+		}
+		out += n
+	}
+	return out
 }
 
 // referencedFacts walks an expr.Node and returns every fact name it reads.
