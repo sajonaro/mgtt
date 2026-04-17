@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Image runner capabilities.** Image-installed providers now declare semantic needs in `provider.yaml` (`image.needs: [kubectl, network]`); mgtt expands each label into the matching `docker run` bind mounts and env forwards at probe time. Built-in vocabulary covers `network`, `kubectl`, `aws`, `docker`, `terraform`, `gcloud`, `azure`. Operators override or extend via `$MGTT_HOME/capabilities.yaml` (+ `capabilities.d/*.yaml` shards) or `MGTT_IMAGE_CAP_<NAME>` env vars; `MGTT_IMAGE_CAPS_DENY=docker,aws` refuses capabilities regardless of declaration. Install-time prints declared caps for audit. Validation rejects unknown caps and refuses `image.needs` on shell-fallback providers. See `docs/reference/image-capabilities.md`.
+
 ### Fixed
 
 - **`mgtt provider install --image` now works with distroless and scratch-based provider images.** `ExtractManifest` previously shelled out to `docker run --rm --entrypoint cat <image> /provider.yaml`, which required the provider image to ship a `cat` binary on `PATH`. Switched to `docker create` + `docker cp <cid>:/provider.yaml -` + `docker rm`, decoding the resulting tar stream in-process. Nothing inside the container is executed, so any base image works. No docs, flags, or on-disk state change.
