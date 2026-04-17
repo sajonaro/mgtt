@@ -34,7 +34,7 @@ func init() {
 }
 
 // renderProviderLs writes one line per provider with a checkmark, name,
-// version, install method, and description to w.
+// version, install method, image capabilities, and description to w.
 func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 	if len(providers) == 0 {
 		fmt.Fprintln(w, "  no providers installed")
@@ -46,6 +46,7 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 		displayName string
 		ver         string
 		method      string
+		caps        string
 		description string
 	}
 	rows := make([]providerRow, 0, len(providers))
@@ -63,10 +64,19 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 			}
 			// On error: show "?" and continue (don't abort the listing)
 		}
+		// Capabilities come from provider.yaml's image.needs. They're
+		// most meaningful for image-installed providers (they drive the
+		// docker-run flags), but rendering them for git installs too is
+		// fine: it's still a declared part of the provider contract.
+		caps := "-"
+		if len(p.Image.Needs) > 0 {
+			caps = "[" + joinNeeds(p.Image.Needs) + "]"
+		}
 		rows = append(rows, providerRow{
 			displayName: displayName,
 			ver:         "v" + p.Meta.Version,
 			method:      method,
+			caps:        caps,
 			description: p.Meta.Description,
 		})
 	}
@@ -75,6 +85,7 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 	maxName := 0
 	maxVersion := 0
 	maxMethod := len("image") // "git" (3) or "image" (5); "image" is wider
+	maxCaps := 0
 	for _, r := range rows {
 		if n := len(r.displayName); n > maxName {
 			maxName = n
@@ -82,15 +93,32 @@ func renderProviderLs(w io.Writer, providers []*providersupport.Provider) {
 		if n := len(r.ver); n > maxVersion {
 			maxVersion = n
 		}
+		if n := len(r.caps); n > maxCaps {
+			maxCaps = n
+		}
 	}
 
 	for _, r := range rows {
-		fmt.Fprintf(w, "  %s %-*s  %-*s  %-*s  %s\n",
+		fmt.Fprintf(w, "  %s %-*s  %-*s  %-*s  %-*s  %s\n",
 			checkmark(true),
 			maxName, r.displayName,
 			maxVersion, r.ver,
 			maxMethod, r.method,
+			maxCaps, r.caps,
 			r.description,
 		)
 	}
+}
+
+// joinNeeds renders a cap list as "a, b, c". Dedicated helper to keep
+// the render loop terse and to avoid importing strings just for Join.
+func joinNeeds(needs []string) string {
+	out := ""
+	for i, n := range needs {
+		if i > 0 {
+			out += ", "
+		}
+		out += n
+	}
+	return out
 }
