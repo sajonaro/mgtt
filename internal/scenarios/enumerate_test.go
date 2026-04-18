@@ -287,6 +287,80 @@ func TestEnumerate_DiamondProducesBothBranches(t *testing.T) {
 	}
 }
 
+// TestEnumerate_EmitsIntermediateTerminalAndExtendedChain — A → B → C where
+// both B and C have observable facts. Enumerator must emit BOTH the 2-step
+// chain terminating at B (symptom-level incident) AND the 3-step chain
+// extending through to C.
+func TestEnumerate_EmitsIntermediateTerminalAndExtendedChain(t *testing.T) {
+	upstreamType := testType("upstream", "live",
+		[]string{},
+		[]providersupport.StateDef{
+			{Name: "stopped"},
+			{Name: "live"},
+		},
+		map[string][]string{"stopped": {"sig"}},
+	)
+	middleType := testType("middle", "live",
+		[]string{"sig"},
+		[]providersupport.StateDef{
+			{Name: "bad", TriggeredBy: []string{"sig"}},
+			{Name: "live"},
+		},
+		map[string][]string{"bad": {"sig2"}},
+	)
+	downstreamType := testType("downstream", "live",
+		[]string{"sig2"},
+		[]providersupport.StateDef{
+			{Name: "broken", TriggeredBy: []string{"sig2"}},
+			{Name: "live"},
+		},
+		map[string][]string{"broken": {}},
+	)
+	reg := buildRegistry("t", map[string]*providersupport.Type{
+		"upstream":   upstreamType,
+		"middle":     middleType,
+		"downstream": downstreamType,
+	})
+	m := buildModel(
+		[]string{"t"},
+		map[string]string{
+			"upstream":   "upstream",
+			"middle":     "middle",
+			"downstream": "downstream",
+		},
+		map[string][]string{
+			"middle":     {"upstream"},
+			"downstream": {"middle"},
+		},
+	)
+
+	scs := Enumerate(m, reg)
+	found2 := false
+	found3 := false
+	for _, s := range scs {
+		if s.Root.Component != "upstream" || s.Root.State != "stopped" {
+			continue
+		}
+		if s.Length() == 2 &&
+			s.Chain[0].Component == "upstream" && s.Chain[1].Component == "middle" &&
+			len(s.Chain[1].Observes) > 0 {
+			found2 = true
+		}
+		if s.Length() == 3 &&
+			s.Chain[0].Component == "upstream" &&
+			s.Chain[1].Component == "middle" &&
+			s.Chain[2].Component == "downstream" {
+			found3 = true
+		}
+	}
+	if !found2 {
+		t.Errorf("expected 2-step chain upstream→middle (middle as terminal); got %+v", scs)
+	}
+	if !found3 {
+		t.Errorf("expected 3-step chain upstream→middle→downstream; got %+v", scs)
+	}
+}
+
 // TestEnumerate_CycleTerminates — A depends on B, B depends on A. Enumerate
 // must not diverge; completes within the timeout.
 func TestEnumerate_CycleTerminates(t *testing.T) {
