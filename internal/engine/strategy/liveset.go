@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"errors"
+	"log"
 
 	"github.com/mgt-tool/mgtt/internal/expr"
 	"github.com/mgt-tool/mgtt/internal/facts"
@@ -65,7 +66,17 @@ func stepConsistent(step scenarios.Step, store *facts.Store, m *model.Model, reg
 		}
 		result, err := EvalStatePredicate(st.When, store, step.Component)
 		if err != nil {
-			return true // undefined / missing-fact → keep live
+			var ue *expr.UnresolvedError
+			if errors.As(err, &ue) {
+				// Missing / stale / type-mismatch on a specific fact →
+				// undefined. Keep the scenario live for later probes.
+				return true
+			}
+			// Genuine evaluator error (unsupported operator, corrupt AST,
+			// etc). Surface it via log and treat the step as contradicted
+			// so the bug doesn't silently keep every scenario alive.
+			log.Printf("[liveset] step %s.%s when-predicate error: %v", step.Component, step.State, err)
+			return false
 		}
 		return result // true = confirmed, false = contradicted
 	}
