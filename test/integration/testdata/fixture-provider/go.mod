@@ -2,7 +2,7 @@ module mgtt-provider-fixture
 
 go 1.25.7
 
-require github.com/mgt-tool/mgtt v0.1.4
+require github.com/mgt-tool/mgtt v0.2.0
 
 // Replace patched at image build; host `go build` uses the `../../../../` path,
 // Docker build rewrites this to `../` via `go mod edit` in the Dockerfile.
