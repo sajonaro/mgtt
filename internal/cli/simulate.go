@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mgt-tool/mgtt/internal/model"
 	"github.com/mgt-tool/mgtt/internal/scenarios"
@@ -26,6 +27,8 @@ var (
 	simulateAll           bool
 	scenariosDir          string
 	simulateFromScenarios bool
+	simulateFuzzN         int
+	simulateFuzzSeed      int64
 )
 
 func init() {
@@ -34,13 +37,15 @@ func init() {
 	simulateCmd.Flags().BoolVar(&simulateAll, "all", false, "run all scenarios in the scenarios directory")
 	simulateCmd.Flags().StringVar(&scenariosDir, "scenarios-dir", "scenarios", "directory containing scenario YAML files")
 	simulateCmd.Flags().BoolVar(&simulateFromScenarios, "from-scenarios", false, "iterate enumerated scenarios as test cases; assert Occam identifies each root")
+	simulateCmd.Flags().IntVar(&simulateFuzzN, "fuzz", 0, "run N fuzz iterations: random scenario, random fact-trail truncation, assert convergence")
+	simulateCmd.Flags().Int64Var(&simulateFuzzSeed, "fuzz-seed", 0, "seed for --fuzz (default: time-based)")
 	simulateCmd.SilenceErrors = true
 	rootCmd.AddCommand(simulateCmd)
 }
 
 func runSimulate(cmd *cobra.Command, args []string) error {
-	if !simulateAll && simulateScenario == "" && !simulateFromScenarios {
-		return fmt.Errorf("specify --scenario <file>, --all, or --from-scenarios")
+	if !simulateAll && simulateScenario == "" && !simulateFromScenarios && simulateFuzzN == 0 {
+		return fmt.Errorf("specify --scenario <file>, --all, --from-scenarios, or --fuzz N")
 	}
 
 	// Load model.
@@ -81,6 +86,27 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(w, "%d/%d scenarios passed\n", p, p+f)
 		if f > 0 {
 			return fmt.Errorf("%d scenario(s) failed", f)
+		}
+		return nil
+	}
+
+	// Fuzz mode (Task F2).
+	if simulateFuzzN > 0 {
+		scs, err := loadEnumeratedScenariosForModel(simulateModel)
+		if err != nil {
+			return err
+		}
+		seed := simulateFuzzSeed
+		if seed == 0 {
+			seed = time.Now().UnixNano()
+		}
+		p, f, details := simulate.Fuzz(m, reg, scs, simulateFuzzN, seed)
+		for _, d := range details {
+			fmt.Fprintln(w, d)
+		}
+		fmt.Fprintf(w, "fuzz seed=%d  %d/%d iterations passed\n", seed, p, p+f)
+		if f > 0 {
+			return fmt.Errorf("%d fuzz iteration(s) failed", f)
 		}
 		return nil
 	}
