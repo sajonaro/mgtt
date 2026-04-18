@@ -20,18 +20,18 @@ theme:
   logo: images/mgtt_icon_medium.png
   favicon: images/mgtt_icon_32px.png
   palette:
-    - scheme: default
-      primary: teal
-      accent: teal
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
     - scheme: slate
       primary: teal
       accent: teal
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   features:
     - navigation.sections
     - navigation.expand

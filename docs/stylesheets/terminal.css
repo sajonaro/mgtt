@@ -27,20 +27,23 @@
 }
 
 [data-md-color-scheme="slate"] {
-  --md-default-bg-color: #13110f;
-  --md-default-fg-color: #e0dcd0;
-  --md-default-fg-color--light: #b6b1a3;
-  --md-default-fg-color--lighter: #817b6c;
-  --md-default-fg-color--lightest: #3a352d;
+  /* Deep cool-blue background — plays with the teal accent without
+     clashing. Slightly blueish dark so the page reads as "night", not
+     "sepia / warm dark". */
+  --md-default-bg-color: #0d1820;
+  --md-default-fg-color: #dae2e9;
+  --md-default-fg-color--light: #a8b5be;
+  --md-default-fg-color--lighter: #6f7e89;
+  --md-default-fg-color--lightest: #2a3640;
 
   --md-primary-fg-color: #3acbb7;
   --md-primary-fg-color--light: #55e0cc;
   --md-primary-fg-color--dark: #2ba090;
   --md-accent-fg-color: #3acbb7;
 
-  --mgtt-rule: #2a2620;
+  --mgtt-rule: #1f2c36;
   --mgtt-code-bg: rgba(58, 203, 183, 0.09);
-  --mgtt-code-block-bg: #1a1713;
+  --mgtt-code-block-bg: #0a131b;
 }
 
 /* ── Body ──────────────────────────────────────────────────────────── */
@@ -244,7 +247,7 @@
 }
 
 [data-md-color-scheme="slate"] .md-header {
-  background: #0d0b0a;
+  background: #091218;
   box-shadow: 0 1px 0 var(--mgtt-rule);
 }
 
@@ -345,8 +348,8 @@
 
 /* ── Footer ────────────────────────────────────────────────────────── */
 
-.md-footer { background: #0d0b0a; }
-.md-footer-meta { background: #0d0b0a; }
+.md-footer { background: #091218; }
+.md-footer-meta { background: #091218; }
 
 /* ── Misc ──────────────────────────────────────────────────────────── */
 
