@@ -18,7 +18,15 @@ If you build or maintain anything with more than two components — a web app wi
 
 </div>
 
-**The core problem:** troubleshooting distributed systems is slow, unstructured, and depends entirely on whoever happens to know the system. There's no map, no systematic narrowing, no way to know what you've already ruled out.
+<div class="problem" markdown>
+
+**The core problem.** Troubleshooting distributed systems is slow, unstructured, and depends entirely on whoever happens to know the system.
+
+- No map.
+- No systematic narrowing.
+- No way to know what you've already ruled out.
+
+</div>
 
 <div class="approach" markdown>
 
