@@ -9,10 +9,13 @@ import base64
 import json
 import os
 import re
+import subprocess
 import sys
 import time
+import traceback
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -20,20 +23,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_YAML = REPO_ROOT / "docs" / "registry.yaml"
 REGISTRY_MD = REPO_ROOT / "docs" / "reference" / "registry.md"
 CACHE_DIR = REPO_ROOT / ".cache" / "registry-generator"
-
 CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 
+DEFAULTS = {"channel": "latest-tag", "skip_image": False}
 
-def cached_fetch(key: str, loader):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = CACHE_DIR / key
-    if path.exists():
-        if time.time() - path.stat().st_mtime < CACHE_TTL_SECONDS:
-            return path.read_text()
-    data = loader()
-    path.write_text(data)
-    return data
-
+# Strict: only v<major>.<minor>.<patch>. Pre-releases like v1.2.3-rc1 are
+# skipped; operators who want them should pin channel: v1.2.3-rc1 explicitly.
+_SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 REGISTRY_MD_PREAMBLE = """# Provider Registry
 
@@ -60,81 +56,48 @@ to double-check.
 """
 
 
-def on_pre_build(config, **_kwargs):
-    with REGISTRY_YAML.open() as f:
-        entries = load_registry(f)
+# ---- HTTP + cache primitives ------------------------------------------------
 
-    offline = os.environ.get("MGTT_REGISTRY_GENERATOR") == "offline"
-
-    sections = [REGISTRY_MD_PREAMBLE]
-    for name, entry in entries.items():
-        if offline:
-            sections.append(_offline_card(name, entry))
-            continue
-        try:
-            ref = resolve_ref(entry["url"], entry["channel"])
-            yaml_text = fetch_provider_yaml(entry["url"], ref)
-            info = parse_provider(yaml_text)
-            image_ref = entry.get("image") or _default_image_ref(entry["url"])
-            digest = ""
-            if not entry["skip_image"]:
-                try:
-                    digest = fetch_image_digest(image_ref, info["version"])
-                except Exception as digest_exc:  # noqa: BLE001
-                    # Private GHCR packages, token-exchange failure, etc.
-                    # Better to render the card without the digest than
-                    # drop the whole provider from the registry page.
-                    print(
-                        f"registry-generator: {name}: digest fetch skipped: "
-                        f"{type(digest_exc).__name__}: {digest_exc}",
-                        file=sys.stderr,
-                    )
-            card = render_card(
-                entry_name=name,
-                repo_url=entry["url"],
-                image_ref=image_ref,
-                digest=digest,
-                info=info,
-                skip_image=entry["skip_image"],
-            )
-            sections.append(card)
-        except Exception as exc:  # noqa: BLE001 — deliberate fail-soft
-            import traceback
-            print(f"registry-generator: {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
-            tb = traceback.extract_tb(exc.__traceback__)
-            # Surface the deepest frame inside registry_generator.py so we
-            # know which fetch (resolve_ref / fetch_provider_yaml /
-            # fetch_image_digest) actually raised — the urllib-internal
-            # leaf frame is not useful.
-            for frame in reversed(tb):
-                if "registry_generator" in frame.filename:
-                    print(
-                        f"registry-generator: {name}:   in {frame.name} "
-                        f"({frame.filename}:{frame.lineno})",
-                        file=sys.stderr,
-                    )
-                    break
-            sections.append(_error_card(name, entry, exc))
-
-    REGISTRY_MD.write_text("\n".join(sections) + "\n")
+def _http_get(url: str, *, headers: dict | None = None, timeout: int = 15) -> bytes:
+    req = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
 
 
-def _offline_card(entry_name: str, entry: dict) -> str:
-    return (
-        f"## {entry_name}\n\n"
-        f"[unavailable — registry sync offline]\n\n"
-        f"- **Source**: `{entry['url']}`\n"
-        "\n---\n"
-    )
+def _github_base() -> str:
+    return os.environ.get("MGTT_REGISTRY_GITHUB_BASE", "https://api.github.com")
 
 
-def _error_card(entry_name: str, entry: dict, err: Exception) -> str:
-    return (
-        f"## {entry_name}\n\n"
-        f":warning: **registry sync failed**: {err}\n\n"
-        f"- **Source**: `{entry['url']}`\n"
-        "\n---\n"
-    )
+def _ghcr_base() -> str:
+    return os.environ.get("MGTT_REGISTRY_GHCR_BASE", "https://ghcr.io")
+
+
+def _github_api(path: str) -> bytes:
+    # Deliberately anonymous. The workflow's GITHUB_TOKEN is scoped to the
+    # repo running the workflow; sending it to the Contents API of a
+    # DIFFERENT repo returns 403 Forbidden. Public-repo anonymous reads
+    # don't need auth (rate limit 60/hr, masked by our disk cache). GHCR
+    # digest fetches still use GITHUB_TOKEN — that's where scope matters.
+    return _http_get(f"{_github_base()}{path}", headers={"Accept": "application/vnd.github+json"})
+
+
+def cached_fetch(key: str, loader: Callable[[], str]) -> str:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = CACHE_DIR / key
+    if path.exists() and time.time() - path.stat().st_mtime < CACHE_TTL_SECONDS:
+        return path.read_text()
+    data = loader()
+    path.write_text(data)
+    return data
+
+
+# ---- Repo URL parsing -------------------------------------------------------
+
+def _parse_repo(repo_url: str) -> tuple[str, str]:
+    m = re.match(r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", repo_url)
+    if not m:
+        raise ValueError(f"unsupported repo URL: {repo_url!r}")
+    return m.group(1), m.group(2)
 
 
 def _default_image_ref(repo_url: str) -> str:
@@ -142,8 +105,7 @@ def _default_image_ref(repo_url: str) -> str:
     return f"ghcr.io/{owner}/{repo}"
 
 
-DEFAULTS = {"channel": "latest-tag", "skip_image": False}
-
+# ---- Registry YAML loader ---------------------------------------------------
 
 def load_registry(stream) -> dict[str, dict]:
     data = yaml.safe_load(stream) or {}
@@ -157,35 +119,7 @@ def load_registry(stream) -> dict[str, dict]:
     return out
 
 
-def _github_base() -> str:
-    return os.environ.get("MGTT_REGISTRY_GITHUB_BASE", "https://api.github.com")
-
-
-def _parse_repo(repo_url: str) -> tuple[str, str]:
-    m = re.match(r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", repo_url)
-    if not m:
-        raise ValueError(f"unsupported repo URL: {repo_url!r}")
-    return m.group(1), m.group(2)
-
-
-def _github_get(path: str) -> bytes:
-    # Deliberately anonymous. The workflow's GITHUB_TOKEN is scoped to the
-    # repo running the workflow; sending it to the Contents API of a
-    # DIFFERENT repo returns 403 Forbidden. Public-repo anonymous reads
-    # don't need auth (rate limit 60/hr, masked by our disk cache). GHCR
-    # digest fetches still use GITHUB_TOKEN — that's where the scope
-    # actually matters.
-    req = urllib.request.Request(f"{_github_base()}{path}")
-    req.add_header("Accept", "application/vnd.github+json")
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read()
-
-
-# Strict: only v<major>.<minor>.<patch> — no pre-release/build suffixes.
-# Pre-releases like v1.2.3-rc1 are skipped; operators who want them should
-# pin channel: v1.2.3-rc1 explicitly.
-_SEMVER_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-
+# ---- Tag resolution + manifest fetch ---------------------------------------
 
 def resolve_ref(repo_url: str, channel: str) -> str:
     """Resolve the channel spec to a concrete git ref (tag name or branch).
@@ -193,8 +127,7 @@ def resolve_ref(repo_url: str, channel: str) -> str:
     Uses `git ls-remote --tags` rather than the GitHub REST API because
     GitHub aggressively 403s anonymous API traffic from its own Actions
     runners, and the workflow's GITHUB_TOKEN is scoped to a single repo.
-    `git ls-remote` is auth-free for public repos and is what git itself
-    uses for tag discovery.
+    `git ls-remote` is auth-free for public repos.
     """
     if channel == "main":
         return "main"
@@ -203,39 +136,42 @@ def resolve_ref(repo_url: str, channel: str) -> str:
     owner, repo = _parse_repo(repo_url)
 
     def _fetch_tags() -> str:
-        # Test mode: MGTT_REGISTRY_GITHUB_BASE indicates the e2e stub
-        # server is handling traffic. Hit its Contents API /tags path
-        # (JSON shape) so the stub doesn't need to speak the git wire
-        # protocol.
         if os.environ.get("MGTT_REGISTRY_GITHUB_BASE"):
-            pages = []
-            for page in range(1, 4):  # at most 300 tags
-                raw = _github_get(f"/repos/{owner}/{repo}/tags?per_page=100&page={page}").decode()
-                pages.append(raw)
-                page_data = json.loads(raw)
-                if len(page_data) < 100:
-                    break
-            # Convert to git-ls-remote text shape so the parser below
-            # handles stub + real git output with one code path.
-            lines = []
-            for page_raw in pages:
-                for t in json.loads(page_raw):
-                    lines.append(f"{t.get('commit',{}).get('sha','')}\trefs/tags/{t['name']}")
-            return "\n".join(lines) + ("\n" if lines else "")
-
-        # Production: git ls-remote --tags prints lines like
-        #   <sha>\trefs/tags/v1.2.3
-        # (+ occasionally a ^{} dereference line for annotated tags;
-        # we skip those — the object they point at is the same tag name.)
-        import subprocess
-        out = subprocess.check_output(
-            ["git", "ls-remote", "--tags", repo_url],
-            timeout=30,
-            text=True,
-        )
-        return out
+            return _tags_via_github_stub(owner, repo)
+        return _tags_via_git_lsremote(repo_url)
 
     raw = cached_fetch(f"tags-{owner}-{repo}", _fetch_tags)
+    best = _highest_semver_tag(raw)
+    if best is None:
+        raise ValueError(f"{owner}/{repo}: no v* semver tags found")
+    return best
+
+
+def _tags_via_github_stub(owner: str, repo: str) -> str:
+    """Test-mode only: pull tags via the stub's Contents API and synthesise
+    git-ls-remote-style lines so the caller has one parsing path."""
+    lines = []
+    for page in range(1, 4):  # at most 300 tags
+        data = json.loads(_github_api(f"/repos/{owner}/{repo}/tags?per_page=100&page={page}"))
+        for t in data:
+            sha = (t.get("commit") or {}).get("sha", "")
+            lines.append(f"{sha}\trefs/tags/{t['name']}")
+        if len(data) < 100:
+            break
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _tags_via_git_lsremote(repo_url: str) -> str:
+    """Production: `git ls-remote --tags` prints `<sha>\\trefs/tags/v1.2.3`
+    (+ occasional `^{}` dereference lines which _highest_semver_tag drops)."""
+    return subprocess.check_output(
+        ["git", "ls-remote", "--tags", repo_url],
+        timeout=30,
+        text=True,
+    )
+
+
+def _highest_semver_tag(raw: str) -> str | None:
     best = None
     for line in raw.splitlines():
         if "\t" not in line:
@@ -252,95 +188,89 @@ def resolve_ref(repo_url: str, channel: str) -> str:
         parts = tuple(int(p) for p in m.groups())
         if best is None or parts > best[0]:
             best = (parts, name)
-    if best is None:
-        raise ValueError(f"{owner}/{repo}: no v* semver tags found")
-    return best[1]
+    return best[1] if best else None
 
 
 def fetch_provider_yaml(repo_url: str, ref: str) -> str:
-    """Fetch manifest.yaml at <ref> via raw.githubusercontent.com.
+    """Fetch manifest.yaml at <ref>.
 
-    Raw is CDN-backed, auth-free for public repos, and isn't subject
-    to the same 403 rate limits as the REST API. If the workflow runs
-    against the test stub, MGTT_REGISTRY_GITHUB_BASE points the call
-    at the stub's Contents API endpoint instead.
+    Production: raw.githubusercontent.com (CDN, auth-free, not subject
+    to REST API 403 rate limits). Test mode (MGTT_REGISTRY_GITHUB_BASE
+    set): the stub's Contents API.
     """
     owner, repo = _parse_repo(repo_url)
 
     def _fetch() -> str:
-        # In production: hit raw.githubusercontent.com. In tests: hit the
-        # Contents API stub via MGTT_REGISTRY_GITHUB_BASE (same behavior
-        # the stub already mocks).
         if os.environ.get("MGTT_REGISTRY_GITHUB_BASE"):
-            raw = _github_get(f"/repos/{owner}/{repo}/contents/manifest.yaml?ref={ref}")
-            obj = json.loads(raw)
-            if obj.get("encoding") != "base64":
-                raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
-            if "content" not in obj:
-                raise ValueError(f"{owner}/{repo}@{ref}: API response lacks 'content'")
-            return base64.b64decode(obj["content"]).decode("utf-8")
-        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/manifest.yaml"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.read().decode("utf-8")
+            return _manifest_via_github_stub(owner, repo, ref)
+        return _manifest_via_raw(owner, repo, ref)
 
     return cached_fetch(f"yaml-{owner}-{repo}-{ref}", _fetch)
 
 
-def _ghcr_base() -> str:
-    return os.environ.get("MGTT_REGISTRY_GHCR_BASE", "https://ghcr.io")
+def _manifest_via_raw(owner: str, repo: str, ref: str) -> str:
+    return _http_get(f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/manifest.yaml").decode("utf-8")
 
+
+def _manifest_via_github_stub(owner: str, repo: str, ref: str) -> str:
+    obj = json.loads(_github_api(f"/repos/{owner}/{repo}/contents/manifest.yaml?ref={ref}"))
+    if obj.get("encoding") != "base64":
+        raise ValueError(f"{owner}/{repo}@{ref}: unexpected content encoding {obj.get('encoding')!r}")
+    if "content" not in obj:
+        raise ValueError(f"{owner}/{repo}@{ref}: API response lacks 'content'")
+    return base64.b64decode(obj["content"]).decode("utf-8")
+
+
+# ---- GHCR digest fetch ------------------------------------------------------
 
 def fetch_image_digest(image_ref: str, tag: str) -> str:
     """Return the sha256 digest ghcr.io computes for <image_ref>:<tag>.
 
-    image_ref is the registry/org/repo portion (no tag). Example:
-    ghcr.io/mgt-tool/mgtt-provider-tempo → queries
-    <base>/v2/mgt-tool/mgtt-provider-tempo/manifests/<tag>.
+    GHCR requires a bearer token on /v2/ even for public packages. Using
+    GITHUB_TOKEN directly as Bearer only works for packages owned by the
+    workflow's own repo (cross-repo is 403). The token-exchange endpoint
+    accepts GITHUB_TOKEN via Basic auth (NOT Bearer) and mints a scoped,
+    package-specific read-only bearer for any publicly visible package.
     """
     prefix = "ghcr.io/"
     if not image_ref.startswith(prefix):
         raise ValueError(f"only ghcr.io images supported for now: {image_ref!r}")
     path = image_ref[len(prefix):]
-    owner_repo = path.replace("/", "-")
+    cache_key = f"digest-{path.replace('/', '-')}-{tag}"
 
     def _fetch() -> str:
-        # GHCR requires a bearer token on /v2/ even for public packages.
-        # Using GITHUB_TOKEN directly as Bearer only works for packages
-        # owned by the workflow's own repo (cross-repo is 403). The
-        # token-exchange endpoint, however, accepts GITHUB_TOKEN via
-        # Basic auth (NOT Bearer) and mints a scoped, package-specific
-        # read-only bearer for any publicly visible package.
-        token_url = (
-            f"{_ghcr_base()}/token?service=ghcr.io&scope=repository:{path}:pull"
-        )
-        treq = urllib.request.Request(token_url)
-        if gh := os.environ.get("GITHUB_TOKEN"):
-            basic = base64.b64encode(f"x-access-token:{gh}".encode()).decode()
-            treq.add_header("Authorization", f"Basic {basic}")
-        with urllib.request.urlopen(treq, timeout=15) as tresp:
-            token = json.loads(tresp.read()).get("token", "")
-        if not token:
-            raise ValueError(f"{image_ref}: GHCR token endpoint returned empty token")
-
-        url = f"{_ghcr_base()}/v2/{path}/manifests/{tag}"
-        req = urllib.request.Request(url)
-        req.add_header(
-            "Accept",
-            "application/vnd.docker.distribution.manifest.v2+json, "
-            "application/vnd.oci.image.manifest.v1+json, "
-            "application/vnd.oci.image.index.v1+json, "
-            "application/vnd.docker.distribution.manifest.list.v2+json",
-        )
-        req.add_header("Authorization", f"Bearer {token}")
+        headers = {
+            "Accept": (
+                "application/vnd.docker.distribution.manifest.v2+json, "
+                "application/vnd.oci.image.manifest.v1+json, "
+                "application/vnd.oci.image.index.v1+json, "
+                "application/vnd.docker.distribution.manifest.list.v2+json"
+            ),
+            "Authorization": f"Bearer {_ghcr_scoped_token(path)}",
+        }
+        req = urllib.request.Request(f"{_ghcr_base()}/v2/{path}/manifests/{tag}", headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             digest = resp.headers.get("Docker-Content-Digest")
         if not digest:
             raise ValueError(f"{image_ref}:{tag}: no Docker-Content-Digest header")
         return digest
 
-    return cached_fetch(f"digest-{owner_repo}-{tag}", _fetch)
+    return cached_fetch(cache_key, _fetch)
 
+
+def _ghcr_scoped_token(path: str) -> str:
+    headers = {}
+    if gh := os.environ.get("GITHUB_TOKEN"):
+        basic = base64.b64encode(f"x-access-token:{gh}".encode()).decode()
+        headers["Authorization"] = f"Basic {basic}"
+    url = f"{_ghcr_base()}/token?service=ghcr.io&scope=repository:{path}:pull"
+    token = json.loads(_http_get(url, headers=headers or None)).get("token", "")
+    if not token:
+        raise ValueError(f"{path}: GHCR token endpoint returned empty token")
+    return token
+
+
+# ---- Provider manifest parsing ---------------------------------------------
 
 def parse_provider(yaml_text: str) -> dict:
     doc = yaml.safe_load(yaml_text) or {}
@@ -358,14 +288,11 @@ def parse_provider(yaml_text: str) -> dict:
     }
 
 
-def _namespace_from_url(repo_url: str) -> str:
-    owner, _ = _parse_repo(repo_url)
-    return owner
-
+# ---- Rendering --------------------------------------------------------------
 
 def render_card(*, entry_name: str, repo_url: str, image_ref: str,
                 digest: str, info: dict, skip_image: bool) -> str:
-    owner = _namespace_from_url(repo_url)
+    owner, _ = _parse_repo(repo_url)
     fqn = f"{owner}/{info['name']}@{info['version']}"
     caps = ", ".join(f"`{n}`" for n in info["needs"]) if info["needs"] else "—"
     network = f"`{info['network']}`" if info["network"] and info["network"] != "bridge" else "— (bridge)"
@@ -382,23 +309,87 @@ def render_card(*, entry_name: str, repo_url: str, image_ref: str,
         f"- **Posture**: {posture}",
     ]
     if not info["read_only"] and info["writes_note"]:
-        first = info["writes_note"].strip().splitlines()[0]
-        parts.append(f"- **Writes**: {first}")
-    parts.append(f"- **Tags**: {tags}")
-    parts.append(f"- **Requires mgtt**: `{info['requires_mgtt']}`")
-    parts.append("")
-    parts.append("```bash")
-    parts.append(f"mgtt provider install {entry_name}")
-    parts.append(f"mgtt provider install {owner}/{info['name']}@{info['version']}")
-    parts.append(f"mgtt provider install {repo_url}")
+        parts.append(f"- **Writes**: {info['writes_note'].strip().splitlines()[0]}")
+    parts += [
+        f"- **Tags**: {tags}",
+        f"- **Requires mgtt**: `{info['requires_mgtt']}`",
+        "",
+        "```bash",
+        f"mgtt provider install {entry_name}",
+        f"mgtt provider install {owner}/{info['name']}@{info['version']}",
+        f"mgtt provider install {repo_url}",
+    ]
     if not skip_image:
-        # When digest is unavailable (private GHCR package, etc.) leave
-        # the placeholder text `<digest>` — the preamble already tells
-        # operators to substitute their own `docker buildx imagetools
-        # inspect` output.
+        # Digest unavailable (private GHCR package, etc.) — leave the
+        # `<digest>` placeholder; the preamble tells operators to
+        # substitute their own `docker buildx imagetools inspect` output.
         suffix = f"@{digest}" if digest else "@<digest>"
         parts.append(f"mgtt provider install --image {image_ref}:{info['version']}{suffix}")
-    parts.append("```")
-    parts.append("")
-    parts.append("---")
+    parts += ["```", "", "---"]
     return "\n".join(parts)
+
+
+def _placeholder_card(entry_name: str, entry: dict, message: str) -> str:
+    return (
+        f"## {entry_name}\n\n"
+        f"{message}\n\n"
+        f"- **Source**: `{entry['url']}`\n"
+        "\n---\n"
+    )
+
+
+# ---- Orchestration ----------------------------------------------------------
+
+def on_pre_build(config, **_kwargs):
+    with REGISTRY_YAML.open() as f:
+        entries = load_registry(f)
+    offline = os.environ.get("MGTT_REGISTRY_GENERATOR") == "offline"
+    sections = [REGISTRY_MD_PREAMBLE] + [_render_entry(n, e, offline) for n, e in entries.items()]
+    REGISTRY_MD.write_text("\n".join(sections) + "\n")
+
+
+def _render_entry(name: str, entry: dict, offline: bool) -> str:
+    if offline:
+        return _placeholder_card(name, entry, "[unavailable — registry sync offline]")
+    try:
+        ref = resolve_ref(entry["url"], entry["channel"])
+        info = parse_provider(fetch_provider_yaml(entry["url"], ref))
+        image_ref = entry.get("image") or _default_image_ref(entry["url"])
+        digest = "" if entry["skip_image"] else _fetch_digest_soft(name, image_ref, info["version"])
+        return render_card(
+            entry_name=name, repo_url=entry["url"], image_ref=image_ref,
+            digest=digest, info=info, skip_image=entry["skip_image"],
+        )
+    except Exception as exc:  # noqa: BLE001 — deliberate fail-soft
+        _log_failure(name, exc)
+        return _placeholder_card(name, entry, f":warning: **registry sync failed**: {exc}")
+
+
+def _fetch_digest_soft(name: str, image_ref: str, version: str) -> str:
+    """Private GHCR packages, token-exchange failures, etc. shouldn't drop
+    the whole card — the preamble already tells operators to fill in their
+    own digest. Swallow and log; return "" so render_card emits <digest>."""
+    try:
+        return fetch_image_digest(image_ref, version)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"registry-generator: {name}: digest fetch skipped: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _log_failure(name: str, exc: Exception) -> None:
+    print(f"registry-generator: {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    # Surface the deepest frame inside registry_generator.py so we know
+    # which fetch actually raised — the urllib-internal leaf frame isn't
+    # useful.
+    for frame in reversed(traceback.extract_tb(exc.__traceback__)):
+        if "registry_generator" in frame.filename:
+            print(
+                f"registry-generator: {name}:   in {frame.name} "
+                f"({frame.filename}:{frame.lineno})",
+                file=sys.stderr,
+            )
+            break
