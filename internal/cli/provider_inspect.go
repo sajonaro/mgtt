@@ -69,7 +69,7 @@ func renderProviderOverview(w io.Writer, p *providersupport.Provider) {
 		fmt.Fprintf(w, "  writes-note: %s\n", firstLine(p.WritesNote))
 	}
 	if len(p.Runtime.Needs) > 0 {
-		fmt.Fprintf(w, "  needs:       %s\n", strings.Join(sortedNeeds(p.Runtime.Needs), ", "))
+		fmt.Fprintf(w, "  needs:       %s\n", strings.Join(sortedNeedNames(p.Runtime.Needs), ", "))
 	}
 	if p.Runtime.NetworkMode != "" && p.Runtime.NetworkMode != "bridge" {
 		fmt.Fprintf(w, "  network:     %s\n", p.Runtime.NetworkMode)

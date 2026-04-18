@@ -17,7 +17,7 @@ var providerUninstallCmd = &cobra.Command{
 	Short: "Uninstall a provider (runs optional uninstall hook, then removes the directory)",
 	Long: `Removes an installed provider from ~/.mgtt/providers/<name>/.
 
-If the provider declares hooks.uninstall in manifest.yaml, that script is
+If the provider declares install.source.clean in manifest.yaml, that script is
 executed before the directory is removed (same environment as the install hook:
 MGTT_PROVIDER_DIR and MGTT_PROVIDER_NAME are set).
 
