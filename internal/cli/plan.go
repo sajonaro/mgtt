@@ -293,7 +293,7 @@ func buildExecutor(reg *providersupport.Registry) (probe.Executor, error) {
 		case providersupport.InstallMethodImage:
 			runners[p.Meta.Name] = probe.NewImageRunner(
 				meta.Source,
-				sortedNeeds(p.Runtime.Needs),
+				sortedNeedNames(p.Runtime.Needs),
 				p.Runtime.NetworkMode,
 			)
 		default:
