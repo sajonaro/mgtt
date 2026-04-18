@@ -111,10 +111,18 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Hand-authored path — collect enumerated scenarios (best-effort) for
+	// gap-detection warnings.
+	enumerated, _ := loadEnumeratedScenariosForModel(simulateModel)
+
 	if simulateAll {
 		cases, err := simulate.LoadAllScenarios(scenariosDir)
 		if err != nil {
 			return err
+		}
+
+		for _, c := range cases {
+			emitGapWarning(w, c, enumerated)
 		}
 
 		var results []*simulate.Result
@@ -142,6 +150,8 @@ func runSimulate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	emitGapWarning(w, sc, enumerated)
 
 	result := simulate.Run(m, reg, sc)
 	renderSimulateResult(w, result)
@@ -183,6 +193,26 @@ func renderSimulateAll(w io.Writer, results []*simulate.Result) {
 
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  %d/%d scenarios passed\n", passed, len(results))
+}
+
+// emitGapWarning prints a warning when a hand-authored simulate case
+// expects a root cause that no enumerated scenario chains to. Silenced
+// when the case sets `unenumerated_intentional: true` or when no
+// enumerated scenarios are available.
+func emitGapWarning(w io.Writer, c *simulate.Scenario, enumerated []scenarios.Scenario) {
+	if c == nil || c.UnenumeratedIntentional || len(enumerated) == 0 {
+		return
+	}
+	if c.Expect.RootCause == "" || c.Expect.RootCause == "none" {
+		return
+	}
+	for _, e := range enumerated {
+		if e.Root.Component == c.Expect.RootCause {
+			return
+		}
+	}
+	fmt.Fprintf(w, "WARN: simulate case %q expects root=%s, but no enumerated scenario chains that root to an observed symptom path. Add triggered_by labels, or mark the case with `unenumerated_intentional: true`.\n",
+		c.Name, c.Expect.RootCause)
 }
 
 // loadEnumeratedScenariosForModel reads the sibling scenarios.yaml for
