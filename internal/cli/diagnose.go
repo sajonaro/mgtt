@@ -41,9 +41,9 @@ type probeRunner interface {
 // without reaching through a constructor chain. Production `runDiagnose`
 // picks these up on every call.
 var (
-	newProbeRunner                       = defaultNewProbeRunner
-	diagnoseStdin        io.Reader       = os.Stdin
-	diagnoseLoader                       = defaultDiagnoseLoader
+	newProbeRunner           = defaultNewProbeRunner
+	diagnoseStdin  io.Reader = os.Stdin
+	diagnoseLoader           = defaultDiagnoseLoader
 )
 
 // diagnoseLoaderFn returns the model, registry, and scenarios the

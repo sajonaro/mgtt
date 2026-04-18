@@ -23,9 +23,9 @@ import (
 // Any probe not in values returns an error so tests fail loud on unexpected
 // probe paths.
 type stubProbeRunner struct {
-	values map[string]any    // "comp.fact" → value
+	values map[string]any // "comp.fact" → value
 	delays map[string]time.Duration
-	calls  []string          // ordered list of "comp.fact" actually probed
+	calls  []string // ordered list of "comp.fact" actually probed
 }
 
 func (s *stubProbeRunner) Run(ctx context.Context, p *strategy.Probe, store *facts.Store) (string, error) {
