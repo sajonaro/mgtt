@@ -106,7 +106,7 @@ Every top-level key above is optional except `meta` and `install` (which must de
 
 ### `meta`
 
-Provider identity. See [manifest.yaml reference](../reference/manifest.md#meta--identity) for the full contract. Fields:
+Provider identity. See [manifest.yaml reference](../reference/manifest.md#meta-identity) for the full contract. Fields:
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -118,7 +118,7 @@ Provider identity. See [manifest.yaml reference](../reference/manifest.md#meta--
 
 ### `runtime`
 
-How the provider talks to its backend at probe time. See [manifest.yaml reference](../reference/manifest.md#runtime--how-the-provider-talks-to-its-backend) for the full contract.
+How the provider talks to its backend at probe time. See [manifest.yaml reference](../reference/manifest.md#runtime-how-the-provider-talks-to-its-backend) for the full contract.
 
 | Field | Description |
 |-------|-------------|
@@ -131,7 +131,7 @@ See [Provider Capabilities](../reference/image-capabilities.md) for what each `n
 
 ### `install`
 
-Declares which install methods the provider offers. See [manifest.yaml reference](../reference/manifest.md#install--how-the-provider-comes-to-exist-on-a-machine).
+Declares which install methods the provider offers. See [manifest.yaml reference](../reference/manifest.md#install-how-the-provider-comes-to-exist-on-a-machine).
 
 ```yaml
 install:
