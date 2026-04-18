@@ -6,61 +6,80 @@ import (
 	"github.com/mgt-tool/mgtt/internal/expr"
 )
 
+// Provider is the in-memory representation of a manifest.yaml (v1.0
+// schema). Three sub-structs carry the top-level blocks; ReadOnly /
+// WritesNote remain top-level because posture is a whole-provider fact.
 type Provider struct {
-	Meta      ProviderMeta
-	Hooks     ProviderHooks
+	Meta    ProviderMeta
+	Runtime ProviderRuntime
+	Install ProviderInstall
+
 	Types     map[string]*Type
 	Variables map[string]Variable
 
-	// ReadOnly is the provider's declared write posture.
-	//
-	// true  — the provider only reads; no side effects. This is the
-	//         default when `read_only:` is absent from manifest.yaml.
-	// false — the provider has side effects; WritesNote must describe them.
-	//         `mgtt provider install` prints the note so the operator
-	//         consents knowingly. Validation rejects `read_only: false`
-	//         without an accompanying WritesNote.
+	// ReadOnly is the provider's declared write posture (default true).
 	ReadOnly bool
-
-	// WritesNote explains the side effect when ReadOnly is false. Ignored
-	// when ReadOnly is true. Free-form markdown — operators read it.
+	// WritesNote describes side effects when ReadOnly is false.
 	WritesNote string
-
-	// Needs lists named capabilities the provider requires at probe time —
-	// each label names a host-side package, credential chain, or socket
-	// (kubectl, aws, docker, terraform, gcloud, azure). Git installs
-	// satisfy needs by inheriting the operator's shell environment;
-	// image installs satisfy them via docker-run bind mounts and env
-	// forwards built by internal/providersupport/probe/capabilities.go.
-	// Populated from the top-level `needs:` block in manifest.yaml.
-	Needs []string
-
-	// Network selects the docker-run network mode for image-installed
-	// providers. Valid values: "bridge" (default), "host", "none".
-	// Separate from Needs because network mode is a runtime isolation
-	// setting, not a host-side resource grant — mixing the two under
-	// one key conflated categories. Empty string defaults to "bridge".
-	Network string
 }
 
+// ProviderMeta is the identity block — who this provider is.
 type ProviderMeta struct {
 	Name        string
 	Version     string
 	Description string
-	Tags        []string          // loose subject/topic labels — what the provider is about
-	Command     string            // path to provider binary; may contain $MGTT_PROVIDER_DIR
-	Requires    map[string]string // dependency constraints, e.g. {"mgtt": ">=0.1.0"}
+	Tags        []string
+	Requires    map[string]string // e.g. {"mgtt": ">=0.2.0"}
 }
 
-type ProviderHooks struct {
-	Install   string
-	Uninstall string
+// ProviderRuntime is how the provider talks to its backend and how mgtt
+// invokes it at probe time.
+type ProviderRuntime struct {
+	// Needs maps capability vocabulary keys to optional semver range
+	// constraints on the backing tool. Empty string value means "any
+	// version is fine".
+	Needs map[string]string
+
+	// Backends maps backend-service names to optional semver range
+	// constraints. Separate axis from Needs (author declares
+	// compatibility with the upstream service, not operator tooling).
+	Backends map[string]string
+
+	// NetworkMode is the docker-run --network for image installs.
+	// Values: "bridge" (default) | "host". Empty string means "bridge".
+	NetworkMode string
+
+	// Entrypoint overrides the convention-derived invocation path.
+	// Empty string means "use the default": for source installs
+	// $MGTT_PROVIDER_DIR/bin/mgtt-provider-<Meta.Name>; for image
+	// installs the image's baked-in ENTRYPOINT.
+	Entrypoint string
+}
+
+// ProviderInstall declares which install methods the provider supports.
+// At least one of Source or Image must be populated after parse.
+type ProviderInstall struct {
+	Source *InstallSource // nil => source install not offered
+	Image  *InstallImage  // nil => image install not offered
+}
+
+// InstallSource describes source-install mechanics. Both fields required
+// when Source is non-nil.
+type InstallSource struct {
+	Build string // path to build script (relative to manifest dir)
+	Clean string // path to clean script (relative to manifest dir)
+}
+
+// InstallImage describes image-install mechanics. Repository is optional;
+// empty string means the parser should resolve from registry context.
+type InstallImage struct {
+	Repository string
 }
 
 type DataType struct {
 	Name    string
-	Base    string   // stdlib primitive: "int", "float", "bool", "string"
-	Units   []string // valid suffixes; nil for unitless
+	Base    string
+	Units   []string
 	Range   *Range
 	Default interface{}
 }
@@ -76,9 +95,9 @@ type Type struct {
 	Facts              map[string]*FactSpec
 	HealthyRaw         []string
 	Healthy            []expr.Node
-	States             []StateDef // declaration order matters
+	States             []StateDef
 	DefaultActiveState string
-	FailureModes       map[string][]string // state → can_cause
+	FailureModes       map[string][]string
 }
 
 type FactSpec struct {
@@ -98,7 +117,7 @@ type ProbeDef struct {
 type StateDef struct {
 	Name        string
 	WhenRaw     string
-	When        expr.Node // compiled from WhenRaw; nil if WhenRaw is empty
+	When        expr.Node
 	Description string
 }
 
