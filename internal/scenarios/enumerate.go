@@ -148,7 +148,10 @@ func extendChain(m *model.Model, reg *providersupport.Registry, compName string,
 				full := append([]Step{{Component: compName, State: state.Name, EmitsOnEdge: match}}, suffix...)
 				allChains = append(allChains, full)
 			}
-			if len(dt.Facts) > 0 && len(suffixes) == 0 {
+			// Also emit a 2-step chain terminating at dname if it has observable
+			// facts — a real incident may stop at dname's symptom layer even when
+			// downstream chains exist.
+			if len(dt.Facts) > 0 {
 				allChains = append(allChains, []Step{
 					{Component: compName, State: state.Name, EmitsOnEdge: match},
 					{Component: dname, State: dstate.Name, Observes: factNames(dt.Facts)},
