@@ -63,7 +63,7 @@ func stepConsistent(step scenarios.Step, store *facts.Store, m *model.Model, reg
 		if st.When == nil {
 			return true
 		}
-		result, err := evalStatePredicate(st.When, store, step.Component)
+		result, err := EvalStatePredicate(st.When, store, step.Component)
 		if err != nil {
 			return true // undefined / missing-fact → keep live
 		}
@@ -72,14 +72,14 @@ func stepConsistent(step scenarios.Step, store *facts.Store, m *model.Model, reg
 	return true
 }
 
-// evalStatePredicate evaluates a compiled state when-predicate against
+// EvalStatePredicate evaluates a compiled state when-predicate against
 // the fact store for a specific component. It mirrors the evaluation
 // path used by state.Derive: build an expr.Ctx with the component as
 // CurrentComponent and the fact store as the FactLookup, then call the
 // node's Eval. An UnresolvedError (or any eval error) is returned to
 // the caller unchanged — callers treat "error" as undefined and keep
 // the scenario live.
-func evalStatePredicate(node expr.Node, store *facts.Store, component string) (bool, error) {
+func EvalStatePredicate(node expr.Node, store *facts.Store, component string) (bool, error) {
 	ctx := expr.Ctx{
 		CurrentComponent: component,
 		Facts:            store,
