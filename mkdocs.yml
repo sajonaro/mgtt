@@ -69,7 +69,7 @@ nav:
     - Specification: reference/spec.md
 
 extra_css:
-  - stylesheets/nav.css
+  - stylesheets/paper.css
 
 markdown_extensions:
   - pymdownx.highlight:
