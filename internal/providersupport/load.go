@@ -180,6 +180,25 @@ func LoadFromFile(path string) (*Provider, error) {
 	return LoadFromBytes(data)
 }
 
+// LoadTypeFromBytes parses a single type YAML document into a *Type. The
+// document's top-level mapping matches the shape used in types/*.yaml files
+// (description / facts / states / default_active_state / failure_modes).
+// Callers are responsible for setting SourcePath afterwards if relevant.
+func LoadTypeFromBytes(name string, data []byte) (*Type, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("type %q: YAML parse error: %w", name, err)
+	}
+	root := &doc
+	if root.Kind == yaml.DocumentNode {
+		if len(root.Content) == 0 {
+			return nil, fmt.Errorf("type %q: YAML document is empty", name)
+		}
+		root = root.Content[0]
+	}
+	return parseType(name, root)
+}
+
 // LoadFromDir loads a provider from a directory. It reads manifest.yaml for
 // meta/needs/network/read_only/hooks/variables. If manifest.yaml contains an
 // inline types: key, those are loaded (backward-compatible). Otherwise, it
