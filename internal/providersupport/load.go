@@ -14,13 +14,11 @@ import (
 
 type rawProvider struct {
 	Meta       rawMeta           `yaml:"meta"`
+	Runtime    rawRuntime        `yaml:"runtime"`
+	Install    rawInstall        `yaml:"install"`
 	Variables  map[string]rawVar `yaml:"variables"`
-	Hooks      rawHooks          `yaml:"hooks"`
-	Needs      []string          `yaml:"needs"`
-	Network    string            `yaml:"network"`
 	ReadOnly   *bool             `yaml:"read_only"`
 	WritesNote string            `yaml:"writes_note"`
-	// Types are parsed separately to preserve declaration order.
 }
 
 type rawMeta struct {
@@ -28,13 +26,31 @@ type rawMeta struct {
 	Version     string            `yaml:"version"`
 	Description string            `yaml:"description"`
 	Tags        []string          `yaml:"tags"`
-	Command     string            `yaml:"command"`
 	Requires    map[string]string `yaml:"requires"`
 }
 
-type rawHooks struct {
-	Install   string `yaml:"install"`
-	Uninstall string `yaml:"uninstall"`
+type rawRuntime struct {
+	// Needs and Backends accept either a YAML sequence (shorthand) or a
+	// mapping (enriched). Decoded as yaml.Node so we can inspect Kind at
+	// parse time and normalize to map[string]string.
+	Needs       yaml.Node `yaml:"needs"`
+	Backends    yaml.Node `yaml:"backends"`
+	NetworkMode string    `yaml:"network_mode"`
+	Entrypoint  string    `yaml:"entrypoint"`
+}
+
+type rawInstall struct {
+	Source *rawInstallSource `yaml:"source"`
+	Image  *rawInstallImage  `yaml:"image"`
+}
+
+type rawInstallSource struct {
+	Build string `yaml:"build"`
+	Clean string `yaml:"clean"`
+}
+
+type rawInstallImage struct {
+	Repository string `yaml:"repository"`
 }
 
 type rawVar struct {
@@ -63,7 +79,6 @@ type rawFailMode struct {
 
 // LoadFromBytes parses a provider YAML from a byte slice.
 func LoadFromBytes(data []byte) (*Provider, error) {
-	// Decode into a generic yaml.Node first so we can traverse the tree.
 	var docNode yaml.Node
 	if err := yaml.Unmarshal(data, &docNode); err != nil {
 		return nil, fmt.Errorf("provider YAML parse error: %w", err)
@@ -71,8 +86,6 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 	if docNode.Kind == 0 {
 		return nil, fmt.Errorf("provider YAML is empty")
 	}
-
-	// Unwrap DocumentNode → actual MappingNode.
 	root := &docNode
 	if root.Kind == yaml.DocumentNode {
 		if len(root.Content) == 0 {
@@ -80,15 +93,22 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 		}
 		root = root.Content[0]
 	}
-
 	if root.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("provider YAML root must be a mapping")
 	}
 
-	// Decode the raw non-types fields.
 	var raw rawProvider
 	if err := root.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode provider metadata: %w", err)
+	}
+
+	needs, err := decodeNameVersionMap(raw.Runtime.Needs, "runtime.needs")
+	if err != nil {
+		return nil, err
+	}
+	backends, err := decodeNameVersionMap(raw.Runtime.Backends, "runtime.backends")
+	if err != nil {
+		return nil, err
 	}
 
 	p := &Provider{
@@ -97,18 +117,21 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 			Version:     raw.Meta.Version,
 			Description: raw.Meta.Description,
 			Tags:        raw.Meta.Tags,
-			Command:     raw.Meta.Command,
 			Requires:    raw.Meta.Requires,
 		},
-		Hooks: ProviderHooks{
-			Install:   raw.Hooks.Install,
-			Uninstall: raw.Hooks.Uninstall,
+		Runtime: ProviderRuntime{
+			Needs:       needs,
+			Backends:    backends,
+			NetworkMode: raw.Runtime.NetworkMode,
+			Entrypoint:  raw.Runtime.Entrypoint,
+		},
+		Install: ProviderInstall{
+			Source: toInstallSource(raw.Install.Source),
+			Image:  toInstallImage(raw.Install.Image),
 		},
 		Types:      make(map[string]*Type),
 		Variables:  make(map[string]Variable),
-		Needs:      raw.Needs,
-		Network:    raw.Network,
-		ReadOnly:   true, // default; overridden below if explicitly set
+		ReadOnly:   true,
 		WritesNote: raw.WritesNote,
 	}
 	if raw.ReadOnly != nil {
@@ -121,6 +144,10 @@ func LoadFromBytes(data []byte) (*Provider, error) {
 			Required:    v.Required,
 			Default:     v.Default,
 		}
+	}
+
+	if err := validate(p); err != nil {
+		return nil, err
 	}
 
 	// Find the "types" key in the root mapping and parse types from its node.
@@ -386,4 +413,107 @@ func parseFact(rf *rawFact) (*FactSpec, error) {
 	}
 
 	return fs, nil
+}
+
+// decodeNameVersionMap accepts either a YAML sequence of scalars
+// (shorthand: [aws, kubectl]) or a mapping (enriched: {aws: ">=2.13"})
+// and returns map[string]string with empty-string values for list-form
+// entries that have no constraint.
+func decodeNameVersionMap(n yaml.Node, fieldName string) (map[string]string, error) {
+	out := map[string]string{}
+	if n.Kind == 0 {
+		return out, nil // absent key
+	}
+	switch n.Kind {
+	case yaml.SequenceNode:
+		for _, item := range n.Content {
+			if item.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("%s: list form entries must be plain scalars; mixing list and map within one block is not allowed", fieldName)
+			}
+			out[item.Value] = ""
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			v := n.Content[i+1]
+			if k.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("%s: keys must be scalars", fieldName)
+			}
+			if v.Kind == yaml.ScalarNode {
+				out[k.Value] = v.Value
+			} else {
+				return nil, fmt.Errorf("%s: values must be scalars (semver range strings)", fieldName)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("%s: must be a sequence or mapping", fieldName)
+	}
+	return out, nil
+}
+
+func toInstallSource(r *rawInstallSource) *InstallSource {
+	if r == nil {
+		return nil
+	}
+	return &InstallSource{Build: r.Build, Clean: r.Clean}
+}
+
+func toInstallImage(r *rawInstallImage) *InstallImage {
+	if r == nil {
+		return nil
+	}
+	return &InstallImage{Repository: r.Repository}
+}
+
+// validate enforces the v1.0 manifest invariants: install-method
+// viability, network_mode enum, name convention, required meta fields.
+func validate(p *Provider) error {
+	if p.Meta.Name == "" {
+		return fmt.Errorf("meta.name is required")
+	}
+	if !isValidShortname(p.Meta.Name) {
+		return fmt.Errorf("meta.name %q must match [a-z][a-z0-9-]*", p.Meta.Name)
+	}
+	if p.Meta.Version == "" {
+		return fmt.Errorf("meta.version is required")
+	}
+	if p.Meta.Description == "" {
+		return fmt.Errorf("meta.description is required")
+	}
+	if p.Install.Source == nil && p.Install.Image == nil {
+		return fmt.Errorf("install: at least one of source or image must be declared")
+	}
+	if p.Install.Source != nil {
+		if p.Install.Source.Build == "" {
+			return fmt.Errorf("install.source.build is required when source is declared")
+		}
+		if p.Install.Source.Clean == "" {
+			return fmt.Errorf("install.source.clean is required when source is declared")
+		}
+	}
+	switch p.Runtime.NetworkMode {
+	case "", "bridge", "host":
+	default:
+		return fmt.Errorf("runtime.network_mode %q: must be \"bridge\" or \"host\"", p.Runtime.NetworkMode)
+	}
+	if !p.ReadOnly && strings.TrimSpace(p.WritesNote) == "" {
+		return fmt.Errorf("read_only: false requires a non-empty writes_note")
+	}
+	return nil
+}
+
+func isValidShortname(s string) bool {
+	if s == "" {
+		return false
+	}
+	if !(s[0] >= 'a' && s[0] <= 'z') {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+			return false
+		}
+	}
+	return true
 }
