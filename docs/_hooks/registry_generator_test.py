@@ -36,13 +36,19 @@ from registry_generator import (
 _TEMPO_YAML = (
     "meta:\n"
     "  name: tempo\n"
-    "  version: 0.2.0\n"
+    "  version: 0.2.1\n"
     "  description: Per-span SLO checks against Grafana Tempo\n"
     "  tags: [tracing, otel]\n"
     "  requires:\n"
-    "    mgtt: \">=0.1.0\"\n"
-    "  command: /bin/provider\n"
-    "network: host\n"
+    "    mgtt: \">=0.2.0\"\n"
+    "runtime:\n"
+    "  network_mode: host\n"
+    "install:\n"
+    "  source:\n"
+    "    build: hooks/install.sh\n"
+    "    clean: hooks/uninstall.sh\n"
+    "  image:\n"
+    "    repository: ghcr.io/mgt-tool/mgtt-provider-tempo\n"
 )
 
 
@@ -129,9 +135,9 @@ class RegistryGeneratorE2E(_StubServerTestCase):
         on_pre_build(config=None)
         rendered = REGISTRY_MD.read_text()
         self.assertIn("## tempo", rendered)
-        self.assertIn("0.2.0", rendered)
+        self.assertIn("0.2.1", rendered)
         self.assertIn("sha256:deadbeef", rendered)
-        self.assertIn("mgt-tool/tempo@0.2.0", rendered)
+        self.assertIn("mgt-tool/tempo@0.2.1", rendered)
 
 
 class LoadRegistryTest(unittest.TestCase):
@@ -166,7 +172,7 @@ class GitHubFetchTest(_StubServerTestCase):
     def test_fetch_provider_yaml(self):
         text = fetch_provider_yaml("https://github.com/mgt-tool/mgtt-provider-tempo", "v0.2.0")
         self.assertIn("name: tempo", text)
-        self.assertIn("version: 0.2.0", text)
+        self.assertIn("version: 0.2.1", text)
 
 
 class GHCRDigestTest(_StubServerTestCase):
@@ -182,43 +188,48 @@ class ParseProviderTest(unittest.TestCase):
         yml = (
             "meta:\n"
             "  name: tempo\n"
-            "  version: 0.2.0\n"
+            "  version: 0.2.1\n"
             "  description: Per-span SLO checks\n"
             "  tags: [tracing, otel]\n"
             "  requires:\n"
-            "    mgtt: \">=0.1.0\"\n"
-            "  command: /bin/provider\n"
-            "needs: [network-ignored-legacy]\n"  # even if present, we accept
-            "network: host\n"
+            "    mgtt: \">=0.2.0\"\n"
+            "runtime:\n"
+            "  needs:\n"
+            "    kubectl: \">=1.25\"\n"
+            "  network_mode: host\n"
+            "install:\n"
+            "  source:\n"
+            "    build: hooks/install.sh\n"
+            "    clean: hooks/uninstall.sh\n"
             "read_only: false\n"
-            "writes_note: |\n"
-            "  writes state\n"
+            "writes_note: writes state\n"
         )
         info = parse_provider(yml)
         self.assertEqual(info["name"], "tempo")
-        self.assertEqual(info["version"], "0.2.0")
-        self.assertEqual(info["description"], "Per-span SLO checks")
-        self.assertEqual(info["tags"], ["tracing", "otel"])
-        self.assertEqual(info["requires_mgtt"], ">=0.1.0")
-        self.assertEqual(info["network"], "host")
+        self.assertEqual(info["version"], "0.2.1")
+        self.assertEqual(info["needs"], {"kubectl": ">=1.25"})
+        self.assertEqual(info["network_mode"], "host")
+        self.assertEqual(info["methods"], ["source"])
         self.assertFalse(info["read_only"])
-        self.assertIn("writes state", info["writes_note"])
+        self.assertIn("state", info["writes_note"])
 
 
 class RenderCardTest(unittest.TestCase):
     def _info(self, **overrides):
         base = {
             "name": "x", "version": "0.1.0", "description": "x",
-            "tags": [], "requires_mgtt": ">=0.1.0", "needs": [],
-            "network": "", "read_only": True, "writes_note": "",
+            "tags": [], "requires_mgtt": ">=0.1.0", "needs": {},
+            "backends": {}, "network_mode": "", "read_only": True,
+            "writes_note": "", "methods": [], "image_repository": "",
         }
         base.update(overrides)
         return base
 
     def test_renders_full_card(self):
         info = self._info(
-            name="tempo", version="0.2.0", description="Per-span SLO checks",
-            tags=["tracing", "otel"], network="host",
+            name="tempo", version="0.2.1", description="Per-span SLO checks",
+            tags=["tracing", "otel"], network_mode="host",
+            methods=["source", "image"], backends={"tempo": ">=2.4"},
         )
         text = render_card(
             entry_name="tempo",
@@ -227,8 +238,10 @@ class RenderCardTest(unittest.TestCase):
             digest="sha256:deadbeef", info=info, skip_image=False,
         )
         self.assertIn("## tempo", text)
-        self.assertIn("mgt-tool/tempo@0.2.0", text)
+        self.assertIn("mgt-tool/tempo@0.2.1", text)
         self.assertIn("**Network**: `host`", text)
+        self.assertIn("**Install methods**: `source`, `image`", text)
+        self.assertIn("**Backends**: `tempo` `>=2.4`", text)
         self.assertIn("sha256:deadbeef", text)
         self.assertIn("mgtt provider install tempo", text)
         self.assertIn("https://github.com/mgt-tool/mgtt-provider-tempo", text)
@@ -236,7 +249,7 @@ class RenderCardTest(unittest.TestCase):
     def test_render_card_handles_read_only_false(self):
         info = self._info(
             name="terraform", description="Terraform state",
-            needs=["terraform"], network="host",
+            needs={"terraform": ""}, network_mode="host", methods=["source"],
             read_only=False, writes_note="refreshes state on plan",
         )
         text = render_card(

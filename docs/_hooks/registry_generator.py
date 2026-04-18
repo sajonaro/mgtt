@@ -275,27 +275,58 @@ def _ghcr_scoped_token(path: str) -> str:
 def parse_provider(yaml_text: str) -> dict:
     doc = yaml.safe_load(yaml_text) or {}
     meta = doc.get("meta") or {}
+    runtime = doc.get("runtime") or {}
+    install = doc.get("install") or {}
+
+    needs = runtime.get("needs") or {}
+    if isinstance(needs, list):
+        needs = {k: "" for k in needs}
+    backends = runtime.get("backends") or {}
+    if isinstance(backends, list):
+        backends = {k: "" for k in backends}
+
+    methods = []
+    if "source" in install:
+        methods.append("source")
+    if "image" in install:
+        methods.append("image")
+
     return {
         "name": meta.get("name", ""),
         "version": str(meta.get("version", "")),
         "description": meta.get("description", ""),
         "tags": list(meta.get("tags") or []),
         "requires_mgtt": (meta.get("requires") or {}).get("mgtt", ""),
-        "needs": list(doc.get("needs") or []),
-        "network": doc.get("network", ""),
+        "needs": needs,                                     # dict name→constraint
+        "backends": backends,                               # dict name→constraint
+        "network_mode": runtime.get("network_mode", ""),
         "read_only": doc.get("read_only", True),
         "writes_note": doc.get("writes_note", ""),
+        "methods": methods,                                 # ["source"], ["image"], or both
+        "image_repository": (install.get("image") or {}).get("repository", ""),
     }
 
 
 # ---- Rendering --------------------------------------------------------------
 
+def _format_entry(name: str, constraint: str) -> str:
+    if constraint:
+        return f"`{name}` `{constraint}`"
+    return f"`{name}`"
+
+
 def render_card(*, entry_name: str, repo_url: str, image_ref: str,
                 digest: str, info: dict, skip_image: bool) -> str:
     owner, _ = _parse_repo(repo_url)
     fqn = f"{owner}/{info['name']}@{info['version']}"
-    caps = ", ".join(f"`{n}`" for n in info["needs"]) if info["needs"] else "—"
-    network = f"`{info['network']}`" if info["network"] and info["network"] != "bridge" else "— (bridge)"
+    caps_parts = [_format_entry(n, v) for n, v in sorted(info["needs"].items())]
+    caps = ", ".join(caps_parts) if caps_parts else "—"
+
+    backend_parts = [_format_entry(n, v) for n, v in sorted(info["backends"].items())]
+    backends = ", ".join(backend_parts) if backend_parts else "—"
+
+    methods = ", ".join(f"`{m}`" for m in info["methods"]) or "—"
+    network = f"`{info['network_mode']}`" if info["network_mode"] and info["network_mode"] != "bridge" else "— (bridge)"
     tags = ", ".join(info["tags"]) if info["tags"] else "—"
     posture = "read-only" if info["read_only"] else "writes"
 
@@ -305,7 +336,9 @@ def render_card(*, entry_name: str, repo_url: str, image_ref: str,
         info["description"] or "",
         "",
         f"- **FQN**: `{fqn}`",
+        f"- **Install methods**: {methods}",
         f"- **Capabilities**: {caps} · **Network**: {network}",
+        f"- **Backends**: {backends}",
         f"- **Posture**: {posture}",
     ]
     if not info["read_only"] and info["writes_note"]:
@@ -354,7 +387,7 @@ def _render_entry(name: str, entry: dict, offline: bool) -> str:
     try:
         ref = resolve_ref(entry["url"], entry["channel"])
         info = parse_provider(fetch_provider_yaml(entry["url"], ref))
-        image_ref = entry.get("image") or _default_image_ref(entry["url"])
+        image_ref = info.get("image_repository") or entry.get("image") or _default_image_ref(entry["url"])
         digest = "" if entry["skip_image"] else _fetch_digest_soft(name, image_ref, info["version"])
         return render_card(
             entry_name=name, repo_url=entry["url"], image_ref=image_ref,
