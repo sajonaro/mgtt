@@ -353,11 +353,13 @@
 
 /* ── Scenario + approach blocks ────────────────────────────────────── */
 
-/* These two paired blocks on the landing page exist to break the
-   "problem vs. solution" narrative visually:
+/* Three paired blocks on the landing page stage the "problem → analysis
+   → solution" narrative visually:
      .scenario  — chaotic 3am transcript; > prompts; dimmed asides.
+     .problem   — quiet analysis; — dashes; no frame fill, thin rule.
      .approach  — ordered systematic response; → arrows; teal accent.
-   Same frame / same list structure so the parallel reads at a glance. */
+   Same list-with-glyph structure across all three so the parallel reads
+   at a glance; visual weight graduates from loud to quiet to accent. */
 
 
 /* Sets the "3am incident" narrative on the landing page apart from the
@@ -465,6 +467,42 @@
 .md-typeset .approach ul li strong {
   color: var(--md-default-fg-color);
   font-weight: 600;
+}
+
+.md-typeset .problem {
+  border-left: 2px solid var(--md-default-fg-color--lighter);
+  padding: 0.2rem 0 0.2rem 1.3rem;
+  margin: 1.4rem 0;
+}
+
+.md-typeset .problem > :first-child { margin-top: 0; }
+.md-typeset .problem > :last-child { margin-bottom: 0; }
+
+.md-typeset .problem > p:first-child strong {
+  color: var(--md-default-fg-color);
+  font-weight: 700;
+}
+
+.md-typeset .problem ul {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.md-typeset .problem ul li {
+  padding-left: 1.6rem;
+  position: relative;
+  margin: 0.15rem 0;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .problem ul li::marker { content: ""; }
+
+.md-typeset .problem ul li::before {
+  content: "—";
+  position: absolute;
+  left: 0.3rem;
+  color: var(--md-default-fg-color--lighter);
 }
 
 /* ── Misc ──────────────────────────────────────────────────────────── */
