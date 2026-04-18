@@ -99,6 +99,11 @@ meta:
   version: 0.1.0
   description: minimal test provider
 
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+
 types:
   mytype:
     facts:
@@ -359,6 +364,11 @@ func TestRegistry_PeckingOrder(t *testing.T) {
 meta:
   name: second
   version: 0.1.0
+  description: second test provider
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 types:
   gateway:
     facts:
@@ -557,18 +567,27 @@ func TestLoadFromBytes_Needs(t *testing.T) {
 meta:
   name: k
   version: 0.1.0
-  command: /bin/k
-auth:
-  strategy: none
-  access: {probes: none, writes: none}
-needs: [kubectl, aws]
+  description: d
+runtime:
+  needs: [kubectl, aws]
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 `)
 	p, err := LoadFromBytes(y)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := p.Needs; len(got) != 2 || got[0] != "kubectl" || got[1] != "aws" {
-		t.Errorf("want [kubectl aws], got %v", got)
+	got := p.Runtime.Needs
+	if len(got) != 2 {
+		t.Fatalf("want 2 entries, got %d (%v)", len(got), got)
+	}
+	if _, ok := got["kubectl"]; !ok {
+		t.Errorf("want kubectl key present, got %v", got)
+	}
+	if _, ok := got["aws"]; !ok {
+		t.Errorf("want aws key present, got %v", got)
 	}
 }
 
@@ -577,18 +596,20 @@ func TestLoadFromBytes_Network(t *testing.T) {
 meta:
   name: k
   version: 0.1.0
-  command: /bin/k
-auth:
-  strategy: none
-  access: {probes: none, writes: none}
-network: host
+  description: d
+runtime:
+  network_mode: host
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 `)
 	p, err := LoadFromBytes(y)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Network != "host" {
-		t.Errorf("want Network=host, got %q", p.Network)
+	if p.Runtime.NetworkMode != "host" {
+		t.Errorf("want NetworkMode=host, got %q", p.Runtime.NetworkMode)
 	}
 }
 
@@ -597,35 +618,166 @@ func TestLoadFromBytes_NetworkDefaultsToEmpty(t *testing.T) {
 meta:
   name: k
   version: 0.1.0
-  command: /bin/k
-auth:
-  strategy: none
-  access: {probes: none, writes: none}
+  description: d
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 `)
 	p, err := LoadFromBytes(y)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Network != "" {
-		t.Errorf("omitted network: must default to empty (bridge); got %q", p.Network)
+	if p.Runtime.NetworkMode != "" {
+		t.Errorf("omitted network_mode: must default to empty (bridge); got %q", p.Runtime.NetworkMode)
 	}
 }
 
-func TestLoadFromBytes_NeedsOmittedIsNil(t *testing.T) {
+func TestLoadFromBytes_NeedsOmittedIsEmpty(t *testing.T) {
 	y := []byte(`
 meta:
   name: k
   version: 0.1.0
-  command: /bin/k
-auth:
-  strategy: none
-  access: {probes: none, writes: none}
+  description: d
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 `)
 	p, err := LoadFromBytes(y)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Needs != nil {
-		t.Errorf("missing needs: block must parse as nil slice, got %v", p.Needs)
+	if len(p.Runtime.Needs) != 0 {
+		t.Errorf("missing runtime.needs must parse as empty map, got %v", p.Runtime.Needs)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// v1.0 invariant tests
+// ---------------------------------------------------------------------------
+
+func TestLoadFromBytes_NeedsListShorthand(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+runtime:
+  needs: [aws, kubectl]
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+`)
+	p, err := LoadFromBytes(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Runtime.Needs; got["aws"] != "" || got["kubectl"] != "" {
+		t.Errorf("list shorthand should produce empty-string values; got %v", got)
+	}
+	if len(p.Runtime.Needs) != 2 {
+		t.Errorf("want 2 entries; got %d", len(p.Runtime.Needs))
+	}
+}
+
+func TestLoadFromBytes_NeedsMapEnriched(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+runtime:
+  needs:
+    aws: ">=2.13"
+    kubectl: ">=1.25"
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+`)
+	p, err := LoadFromBytes(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Runtime.Needs["aws"]; got != ">=2.13" {
+		t.Errorf("want aws=>=2.13; got %q", got)
+	}
+}
+
+func TestLoadFromBytes_RejectsNoInstallMethod(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+runtime:
+  needs: [aws]
+install: {}
+`)
+	_, err := LoadFromBytes(y)
+	if err == nil {
+		t.Fatal("expected error on empty install block")
+	}
+}
+
+func TestLoadFromBytes_RejectsBadNetworkMode(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+runtime:
+  network_mode: magic
+install:
+  image:
+    repository: ghcr.io/x/y
+`)
+	_, err := LoadFromBytes(y)
+	if err == nil {
+		t.Fatal("expected error on bad network_mode")
+	}
+}
+
+func TestLoadFromBytes_AcceptsImageOnly(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+install:
+  image:
+    repository: ghcr.io/x/y
+`)
+	p, err := LoadFromBytes(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Install.Image == nil {
+		t.Fatal("want image install declared")
+	}
+	if p.Install.Source != nil {
+		t.Fatal("want no source install")
+	}
+}
+
+func TestLoadFromBytes_AcceptsSourceOnly(t *testing.T) {
+	y := []byte(`
+meta:
+  name: p
+  version: 0.1.0
+  description: d
+install:
+  source:
+    build: b
+    clean: c
+`)
+	p, err := LoadFromBytes(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Install.Source == nil || p.Install.Image != nil {
+		t.Errorf("want source-only install; got %+v", p.Install)
 	}
 }
