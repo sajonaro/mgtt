@@ -122,6 +122,95 @@ func TestOccam_DoneWhenSingleRemains(t *testing.T) {
 	}
 }
 
+// TestOccam_PicksUnverifiedFactAtFactLevel verifies the M3 fix: a
+// component-level "any fact present → skip" gate would wrongly treat a
+// step as verified when an *unrelated* fact is collected. The fact-level
+// gate must still probe the specific fact(s) the step depends on.
+func TestOccam_PicksUnverifiedFactAtFactLevel(t *testing.T) {
+	// Type 'rds' has two facts: "available" (referenced by state.stopped's
+	// when) and "other_fact" (unrelated). State 'stopped' is non-terminal
+	// for the test scenario — we'll put it mid-chain so the observes list
+	// is empty and stepObservingFacts must walk the When predicate.
+	rdsType := &providersupport.Type{
+		Name: "rds",
+		Facts: map[string]*providersupport.FactSpec{
+			"available":  {Probe: providersupport.ProbeDef{Cmd: "rds-avail", Cost: "cheap", Access: "read"}},
+			"other_fact": {Probe: providersupport.ProbeDef{Cmd: "rds-other", Cost: "cheap", Access: "read"}},
+		},
+		States: []providersupport.StateDef{
+			{Name: "stopped", When: expr.CmpNode{Fact: "available", Op: expr.OpEq, Value: false}},
+		},
+	}
+	apiType := &providersupport.Type{
+		Name: "api",
+		Facts: map[string]*providersupport.FactSpec{
+			"error_rate": {Probe: providersupport.ProbeDef{Cmd: "api-err", Cost: "cheap", Access: "read"}},
+		},
+		States: []providersupport.StateDef{
+			{Name: "down"},
+		},
+	}
+	prov := &providersupport.Provider{
+		Meta: providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{
+			"rds": rdsType,
+			"api": apiType,
+		},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(prov)
+
+	m := &model.Model{
+		Meta: model.Meta{Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"rds": {Name: "rds", Type: "rds"},
+			"api": {Name: "api", Type: "api", Depends: []model.Dependency{{On: []string{"rds"}}}},
+		},
+		Order: []string{"rds", "api"},
+	}
+
+	store := facts.NewInMemory()
+	// Collect an UNRELATED fact on rds. Component-level gate would skip
+	// rds as "has facts". Fact-level gate must still probe "available".
+	store.Append("rds", facts.Fact{Key: "other_fact", Value: "x", At: time.Now()})
+
+	// Pre-collect error_rate on api too — this makes api.down's terminal
+	// step fully verified (all observed facts present), forcing the
+	// symptom-inward walk to continue to rds.stopped.
+	store.Append("api", facts.Fact{Key: "error_rate", Value: 0.0, At: time.Now()})
+
+	// Two scenarios so Occam doesn't short-circuit as Done. Both share
+	// the rds→api shape; pick either — the walk on either hits rds.
+	scs := []scenarios.Scenario{
+		{
+			ID: "rds-first",
+			Chain: []scenarios.Step{
+				{Component: "rds", State: "stopped", EmitsOnEdge: "sig"},
+				{Component: "api", State: "down", Observes: []string{"error_rate"}},
+			},
+		},
+		{
+			ID: "rds-alt",
+			Chain: []scenarios.Step{
+				{Component: "rds", State: "stopped", EmitsOnEdge: "sig2"},
+				{Component: "api", State: "down", Observes: []string{"error_rate"}},
+			},
+		},
+	}
+
+	dec := Occam().SuggestProbe(Input{Model: m, Registry: reg, Store: store, Scenarios: scs})
+	if dec.Probe == nil {
+		t.Fatalf("want probe; got %+v", dec)
+	}
+	// Fact-level gate: rds has other_fact collected, but "available"
+	// (the fact referenced by state.stopped's when) is missing. Probe
+	// must target rds.available despite other_fact being present.
+	if dec.Probe.Component != "rds" || dec.Probe.Fact != "available" {
+		t.Errorf("want probe on rds.available (fact-level gate); got %s.%s",
+			dec.Probe.Component, dec.Probe.Fact)
+	}
+}
+
 func TestOccam_SuspectBumpsTieBreak(t *testing.T) {
 	m, reg := threeCompModel(t)
 	store := facts.NewInMemory()

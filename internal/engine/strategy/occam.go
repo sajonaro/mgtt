@@ -3,6 +3,7 @@ package strategy
 import (
 	"sort"
 
+	"github.com/mgt-tool/mgtt/internal/expr"
 	"github.com/mgt-tool/mgtt/internal/facts"
 	"github.com/mgt-tool/mgtt/internal/model"
 	"github.com/mgt-tool/mgtt/internal/providersupport"
@@ -95,19 +96,18 @@ func crossEliminationCount(s scenarios.Scenario, live []scenarios.Scenario, stor
 	return n
 }
 
-// pickSymptomInward walks the chain terminal→root and returns a probe
-// for the first step whose component has no facts collected. For
-// terminal steps, the probe targets the first fact in Observes; for
-// non-terminal steps, the first fact (alphabetical) in the type.
+// pickSymptomInward walks the chain terminal→root and returns a probe for
+// the first step that is not yet truly verified at the fact level. A step
+// is verified iff every fact it directly relies on — step.Observes for a
+// terminal step, or every fact referenced in state.When for a non-terminal
+// step — is already in the store. The prior component-level gate (any fact
+// collected → skip) was too coarse.
 func pickSymptomInward(s scenarios.Scenario, store *facts.Store, m *model.Model, reg *providersupport.Registry) *Probe {
 	if m == nil || reg == nil {
 		return nil
 	}
 	for i := len(s.Chain) - 1; i >= 0; i-- {
 		step := s.Chain[i]
-		if store != nil && store.FactsFor(step.Component) != nil {
-			continue
-		}
 		comp := m.Components[step.Component]
 		if comp == nil {
 			continue
@@ -120,20 +120,43 @@ func pickSymptomInward(s scenarios.Scenario, store *facts.Store, m *model.Model,
 		if err != nil || t == nil {
 			continue
 		}
-		var factName string
-		if len(step.Observes) > 0 {
-			factName = step.Observes[0]
-		} else {
+		needed := stepObservingFacts(step, t)
+		// Drop names that don't correspond to an actual fact on the
+		// type — collectFactRefs is permissive (RHS strings may be
+		// literals, not fact refs), so the type definition is the
+		// authority on what can actually be probed.
+		filtered := needed[:0]
+		for _, n := range needed {
+			if _, ok := t.Facts[n]; ok {
+				filtered = append(filtered, n)
+			}
+		}
+		needed = filtered
+		if len(needed) == 0 {
+			// Nothing defined to verify this step against — fall back to
+			// the first alphabetical fact on the type (preserves prior
+			// behaviour for types without predicates).
 			names := make([]string, 0, len(t.Facts))
 			for n := range t.Facts {
 				names = append(names, n)
 			}
 			sort.Strings(names)
-			if len(names) > 0 {
-				factName = names[0]
+			if len(names) == 0 {
+				continue
+			}
+			needed = names
+		}
+		// Pick the first needed fact not yet collected.
+		var factName string
+		for _, n := range needed {
+			if store == nil || store.Latest(step.Component, n) == nil {
+				factName = n
+				break
 			}
 		}
 		if factName == "" {
+			// All facts this step depends on are already collected —
+			// truly verified, move on.
 			continue
 		}
 		fs := t.Facts[factName]
@@ -151,4 +174,80 @@ func pickSymptomInward(s scenarios.Scenario, store *facts.Store, m *model.Model,
 		}
 	}
 	return nil
+}
+
+// stepObservingFacts returns the facts a step directly depends on:
+//   - For a terminal step (Observes non-empty), the observed facts.
+//   - For a non-terminal step, the facts referenced by the state's When
+//     predicate (in deterministic alphabetical order).
+func stepObservingFacts(step scenarios.Step, t *providersupport.Type) []string {
+	if step.IsTerminal() {
+		out := append([]string(nil), step.Observes...)
+		sort.Strings(out)
+		return out
+	}
+	for _, st := range t.States {
+		if st.Name != step.State {
+			continue
+		}
+		return collectFactRefs(st.When)
+	}
+	return nil
+}
+
+// collectFactRefs walks a compiled when-predicate and returns the set of
+// fact names it references on this component. The common case is a boolean
+// AST of CmpNode / AndNode / OrNode — see internal/expr/types.go. Results
+// are sorted for deterministic probe selection.
+func collectFactRefs(node expr.Node) []string {
+	seen := map[string]bool{}
+	walkFactRefs(node, seen)
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func walkFactRefs(node expr.Node, seen map[string]bool) {
+	switch n := node.(type) {
+	case *expr.AndNode:
+		walkFactRefs(n.L, seen)
+		walkFactRefs(n.R, seen)
+	case expr.AndNode:
+		walkFactRefs(n.L, seen)
+		walkFactRefs(n.R, seen)
+	case *expr.OrNode:
+		walkFactRefs(n.L, seen)
+		walkFactRefs(n.R, seen)
+	case expr.OrNode:
+		walkFactRefs(n.L, seen)
+		walkFactRefs(n.R, seen)
+	case *expr.CmpNode:
+		recordCmpFacts(*n, seen)
+	case expr.CmpNode:
+		recordCmpFacts(n, seen)
+	}
+}
+
+func recordCmpFacts(n expr.CmpNode, seen map[string]bool) {
+	// LHS: record unless it's a cross-component state reference
+	// (Fact=="state") — that doesn't name a fact on this type.
+	// Same-component refs have n.Component=="" per parser.
+	if n.Fact != "" && n.Fact != "state" && n.Component == "" {
+		seen[n.Fact] = true
+	}
+	// RHS: a string literal that doesn't parse as a number is treated by
+	// the evaluator as a fact reference on the same component (see
+	// compareFactValue). Mirror that here so the probe can collect it.
+	if s, ok := n.Value.(string); ok {
+		if _, boolish := map[string]bool{"true": true, "false": true}[s]; boolish {
+			return
+		}
+		// parser.InferValue leaves non-numeric, non-boolean strings as
+		// strings; a literal that parsed as int/float would not arrive
+		// here. The evaluator then treats it as a fact ref.
+		seen[s] = true
+	}
 }
