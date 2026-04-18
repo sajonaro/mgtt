@@ -3,6 +3,11 @@ meta:
   version: 0.1.0
   description: test provider using multi-file types
 
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+
 variables:
   namespace:
     description: kubernetes namespace

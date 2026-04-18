@@ -4,11 +4,11 @@ meta:
   description: Fictional datalayer provider — persistent-storage primitives. Used to exercise provider-agnostic core machinery in tests; does NOT represent any real backend.
   requires:
     mgtt: ">=0.1.0"
-  command: ""
 
-hooks:
-  install: ""
-  uninstall: ""
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 
 auth:
   strategy: environment

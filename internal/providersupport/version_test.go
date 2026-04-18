@@ -50,14 +50,13 @@ func TestProvider_CheckCompatible_BypassByCallers(t *testing.T) {
 meta:
   name: x
   version: 1.0.0
+  description: d
   requires:
     mgtt: ">=99.0.0"
-  command: "/tmp/x"
-auth:
-  strategy: environment
-  access:
-    probes: read
-    writes: none
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 `)
 	p, err := LoadFromBytes(yamlSrc)
 	if err != nil {

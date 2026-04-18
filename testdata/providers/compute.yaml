@@ -4,11 +4,11 @@ meta:
   description: Fictional compute provider — workloads and edge routing. Used to exercise provider-agnostic core machinery in tests; does NOT represent any real backend.
   requires:
     mgtt: ">=0.1.0"
-  command: "$MGTT_PROVIDER_DIR/bin/mgtt-provider-compute"
 
-hooks:
-  install: hooks/install.sh
-  uninstall: hooks/uninstall.sh
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
 
 variables:
   namespace:
