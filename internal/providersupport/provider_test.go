@@ -895,3 +895,54 @@ func TestResolveEntrypoint(t *testing.T) {
 		t.Errorf("override: got %q", got)
 	}
 }
+
+func TestLoadFromBytes_StateTriggeredBy(t *testing.T) {
+	y := []byte(`
+meta:
+  name: foo
+  version: 0.1.0
+  description: d
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+types:
+  widget:
+    description: test widget
+    facts:
+      count: { type: mgtt.int, ttl: 60s }
+    states:
+      stopped:
+        when: "count == 0"
+        description: widget is stopped
+        triggered_by: [upstream_failure, connection_refused]
+      live:
+        when: "count > 0"
+        description: widget is live
+    default_active_state: live
+`)
+	p, err := LoadFromBytes(y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	widget := p.Types["widget"]
+	if widget == nil {
+		t.Fatal("widget type missing")
+	}
+	var stopped *StateDef
+	for i := range widget.States {
+		if widget.States[i].Name == "stopped" {
+			stopped = &widget.States[i]
+			break
+		}
+	}
+	if stopped == nil {
+		t.Fatal("stopped state missing")
+	}
+	if len(stopped.TriggeredBy) != 2 {
+		t.Errorf("want 2 triggered_by entries; got %v", stopped.TriggeredBy)
+	}
+	if stopped.TriggeredBy[0] != "upstream_failure" || stopped.TriggeredBy[1] != "connection_refused" {
+		t.Errorf("unexpected triggered_by: %v", stopped.TriggeredBy)
+	}
+}

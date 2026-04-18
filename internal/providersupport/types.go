@@ -136,6 +136,7 @@ type StateDef struct {
 	WhenRaw     string
 	When        expr.Node
 	Description string
+	TriggeredBy []string
 }
 
 type Variable struct {
