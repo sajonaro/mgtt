@@ -4,7 +4,19 @@
 
 If you build or maintain anything with more than two components — a web app with a frontend, an API, and a database; a set of microservices behind a load balancer; a data pipeline with queues, workers, and storage — you know the drill:
 
-Something stops working. You check the logs. Nothing obvious. You check the database. Looks fine. You check the API. Restarting. Why? You check the config. You check the deploy history. You ask the person who wrote it. They're asleep. You open three terminals and start guessing.
+<div class="scenario" markdown>
+
+**Something stops working.**
+
+- You check the logs. *Nothing obvious.*
+- You check the database. *Looks fine.*
+- You check the API. *Restarting. Why?*
+- You check the config.
+- You check the deploy history.
+- You ask the person who wrote it. *They're asleep.*
+- You open three terminals and start guessing.
+
+</div>
 
 **The core problem:** troubleshooting distributed systems is slow, unstructured, and depends entirely on whoever happens to know the system. There's no map, no systematic narrowing, no way to know what you've already ruled out.
 

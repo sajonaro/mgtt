@@ -351,6 +351,63 @@
 .md-footer { background: #111a2d; }
 .md-footer-meta { background: #111a2d; }
 
+/* ── Scenario block ────────────────────────────────────────────────── */
+
+/* Sets the "3am incident" narrative on the landing page apart from the
+   framing prose. Reads as a terminal transcript: each action on its own
+   line, prompt-prefixed, the "nothing obvious / looks fine" asides
+   dimmed. */
+
+.md-typeset .scenario {
+  background: var(--mgtt-code-block-bg);
+  border-left: 2px solid var(--md-primary-fg-color);
+  border-radius: 2px;
+  padding: 1rem 1.3rem;
+  margin: 1.4rem 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.md-typeset .scenario > :first-child { margin-top: 0; }
+.md-typeset .scenario > :last-child { margin-bottom: 0; }
+
+.md-typeset .scenario strong {
+  color: var(--md-default-fg-color);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.md-typeset .scenario ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.md-typeset .scenario ul li {
+  padding-left: 1.6rem;
+  position: relative;
+  margin: 0.18rem 0;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Kill Material's default list marker pseudo-element so only our
+   terminal-style prompt glyph appears. */
+.md-typeset .scenario ul li::marker { content: ""; }
+
+.md-typeset .scenario ul li::before {
+  content: ">";
+  position: absolute;
+  left: 0.35rem;
+  color: var(--md-primary-fg-color);
+  font-weight: 500;
+}
+
+.md-typeset .scenario em {
+  color: var(--md-default-fg-color--lighter);
+  font-style: italic;
+}
+
 /* ── Misc ──────────────────────────────────────────────────────────── */
 
 /* Keep images from ever blowing out the content column */
