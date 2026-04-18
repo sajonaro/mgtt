@@ -5,6 +5,12 @@ type Scenario struct {
 	Description string                    `yaml:"description"`
 	Inject      map[string]map[string]any `yaml:"inject"`
 	Expect      Expectation               `yaml:"expect"`
+	// UnenumeratedIntentional suppresses the gap-detection warning when
+	// the case's expected root has no matching enumerated scenario.
+	// Set this when the case deliberately exercises a hypothetical
+	// failure mode that the model's triggered_by graph doesn't yet
+	// cover.
+	UnenumeratedIntentional bool `yaml:"unenumerated_intentional"`
 }
 
 type Expectation struct {
