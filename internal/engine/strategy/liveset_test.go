@@ -106,6 +106,79 @@ func TestFilterLive_ConfirmedStateKept(t *testing.T) {
 	}
 }
 
+// TestStepConsistent_UnresolvedErrorKeepsLive — a step whose when-predicate
+// references a fact not in the store should be kept alive (UnresolvedError
+// is not a genuine evaluator failure).
+func TestStepConsistent_UnresolvedErrorKeepsLive(t *testing.T) {
+	whenStopped := expr.CmpNode{Fact: "missing_fact", Op: expr.OpEq, Value: "x"}
+	typ := &providersupport.Type{
+		Name: "service",
+		States: []providersupport.StateDef{
+			{Name: "stopped", When: whenStopped},
+		},
+	}
+	prov := &providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{"service": typ},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(prov)
+
+	m := &model.Model{
+		Meta: model.Meta{Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"svc": {Name: "svc", Type: "service"},
+		},
+		Order: []string{"svc"},
+	}
+
+	store := facts.NewInMemory()
+	store.Append("svc", facts.Fact{Key: "other", Value: "x", At: time.Now()})
+
+	step := scenarios.Step{Component: "svc", State: "stopped"}
+	if !stepConsistent(step, store, m, reg) {
+		t.Error("UnresolvedError must keep step alive")
+	}
+}
+
+// TestStepConsistent_GenuineEvalErrorMarksContradicted — an evaluator error
+// that is NOT an UnresolvedError (e.g., an operator the type-compare can't
+// support) must eliminate the step, not silently keep it alive.
+func TestStepConsistent_GenuineEvalErrorMarksContradicted(t *testing.T) {
+	// Predicate: available < false — OpLt on a bool raises a genuine
+	// (non-UnresolvedError) error in compareBools.
+	whenStopped := expr.CmpNode{Fact: "available", Op: expr.OpLt, Value: false}
+	typ := &providersupport.Type{
+		Name: "service",
+		States: []providersupport.StateDef{
+			{Name: "stopped", When: whenStopped},
+		},
+	}
+	prov := &providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{"service": typ},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(prov)
+
+	m := &model.Model{
+		Meta: model.Meta{Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"svc": {Name: "svc", Type: "service"},
+		},
+		Order: []string{"svc"},
+	}
+
+	store := facts.NewInMemory()
+	// Bool fact so the compare path is bool-on-bool with an invalid op.
+	store.Append("svc", facts.Fact{Key: "available", Value: true, At: time.Now()})
+
+	step := scenarios.Step{Component: "svc", State: "stopped"}
+	if stepConsistent(step, store, m, reg) {
+		t.Error("genuine evaluator error must eliminate the step, not keep it alive")
+	}
+}
+
 // TestFilterLive_UndefinedPredicateKeeps verifies that missing facts
 // (UnresolvedError) keep the scenario live rather than eliminating it.
 func TestFilterLive_UndefinedPredicateKeeps(t *testing.T) {
