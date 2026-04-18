@@ -25,9 +25,10 @@ var modelCmd = &cobra.Command{
 var writeScenariosFlag bool
 
 var modelValidateCmd = &cobra.Command{
-	Use:   "validate [path]",
-	Short: "Validate system.model.yaml",
-	Args:  cobra.MaximumNArgs(1),
+	Use:          "validate [path]",
+	Short:        "Validate system.model.yaml",
+	Args:         cobra.MaximumNArgs(1),
+	SilenceUsage: true, // validation errors are not usage errors
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If no path was supplied AND --write-scenarios was asked for,
 		// treat this as a workspace walk: find every model.yaml under
@@ -94,7 +95,7 @@ func runSingleModelValidate(cmd *cobra.Command, path string, writeScenarios bool
 	renderModelValidate(cmd.OutOrStdout(), result, m.Order, depCounts)
 
 	if result.HasErrors() {
-		os.Exit(1)
+		return fmt.Errorf("model has validation errors")
 	}
 
 	// Drift detection: if scenarios.yaml exists next to the model, its

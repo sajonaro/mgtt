@@ -177,6 +177,41 @@ func TestValidate_DetectsScenariosDrift(t *testing.T) {
 	}
 }
 
+// TestValidate_ReturnsErrorOnValidationErrors verifies that `mgtt model
+// validate` returns a non-nil error (rather than os.Exit(1)'ing the test
+// binary) when the loaded model fails validation.
+func TestValidate_ReturnsErrorOnValidationErrors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+	stageTestProvider(t, home, "testprov", "svc_type")
+
+	workDir := t.TempDir()
+	// Write a model whose component depends on a component that isn't
+	// declared — pass3DepRefs flags this as a validation error.
+	modelPath := filepath.Join(workDir, "model.yaml")
+	body := "meta:\n" +
+		"  name: bad\n" +
+		"  version: \"1.0\"\n" +
+		"  providers:\n" +
+		"    - testprov\n" +
+		"components:\n" +
+		"  svc:\n" +
+		"    type: svc_type\n" +
+		"    depends:\n" +
+		"      - on: [not_declared]\n"
+	if err := os.WriteFile(modelPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runValidate(t, "model", "validate", modelPath)
+	if err == nil {
+		t.Fatalf("expected error on invalid model; got nil\noutput:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "validation") {
+		t.Errorf("expected 'validation' in error message; got %q", err.Error())
+	}
+}
+
 func TestValidate_MultiModelIndex(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("MGTT_HOME", home)
