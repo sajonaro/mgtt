@@ -363,8 +363,9 @@ func parseStatesOrdered(node *yaml.Node) ([]StateDef, error) {
 		stateName := keyNode.Value
 
 		var rawState struct {
-			When        string `yaml:"when"`
-			Description string `yaml:"description"`
+			When        string   `yaml:"when"`
+			Description string   `yaml:"description"`
+			TriggeredBy []string `yaml:"triggered_by"`
 		}
 		if err := valNode.Decode(&rawState); err != nil {
 			return nil, fmt.Errorf("state %q: %w", stateName, err)
@@ -374,6 +375,7 @@ func parseStatesOrdered(node *yaml.Node) ([]StateDef, error) {
 			Name:        stateName,
 			WhenRaw:     rawState.When,
 			Description: rawState.Description,
+			TriggeredBy: rawState.TriggeredBy,
 		})
 	}
 
