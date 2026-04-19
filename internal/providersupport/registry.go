@@ -81,12 +81,25 @@ func (r *Registry) ResolveType(componentProviders []string, typeName string) (*T
 	}
 
 	for _, providerName := range componentProviders {
-		p, ok := r.providers[providerName]
+		// A meta.provider entry may be a bare name ("kubernetes"), an FQN
+		// ("mgt-tool/kubernetes"), or either form with a version suffix
+		// ("kubernetes@^3.0.0", "mgt-tool/kubernetes@^3.0.0"). The
+		// registry is keyed by bare name, so normalize to the bare name
+		// before lookup. Parsing is lightweight and keeps the rest of
+		// this resolver simple.
+		bareName := providerName
+		if at := strings.IndexByte(bareName, '@'); at >= 0 {
+			bareName = bareName[:at]
+		}
+		if slash := strings.LastIndexByte(bareName, '/'); slash >= 0 {
+			bareName = bareName[slash+1:]
+		}
+		p, ok := r.providers[bareName]
 		if !ok {
 			continue
 		}
 		if t, ok := p.Types[typeName]; ok {
-			return t, providerName, nil
+			return t, bareName, nil
 		}
 	}
 
