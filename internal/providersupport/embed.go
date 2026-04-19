@@ -87,14 +87,26 @@ func ListEmbedded() []string {
 //
 // This variant does NOT enforce meta.requires.mgtt — it's for the uninstall
 // and ls paths, where incompatible providers must still be visible.
-func LoadAllEmbedded() *Registry {
+//
+// Any on-disk provider whose meta.name equals the reserved generic name
+// is skipped, and its name is returned so callers can error at the CLI
+// boundary. Silently loading it would let it shadow the built-in
+// fallback.
+func LoadAllEmbedded() (*Registry, []string) {
 	reg := NewRegistry()
+	var reserved []string
 	for _, name := range ListEmbedded() {
-		if p, err := LoadEmbedded(name); err == nil {
-			reg.Register(p)
+		p, err := LoadEmbedded(name)
+		if err != nil {
+			continue
 		}
+		if IsGenericName(p.Meta.Name) {
+			reserved = append(reserved, name)
+			continue
+		}
+		reg.Register(p)
 	}
-	return reg
+	return reg, reserved
 }
 
 // LoadForUse is the version-gated loader every non-uninstall/ls caller MUST
@@ -115,8 +127,14 @@ func LoadForUse(name string) (*Provider, error) {
 // LoadAllForUse returns a registry of every discovered provider, filtering
 // out those that fail CheckCompatible. Incompatible providers are silently
 // dropped — use LoadForUse on a specific name if you need the error.
-func LoadAllForUse() *Registry {
+//
+// Any on-disk provider whose meta.name equals the reserved generic name
+// is skipped; the second return value collects those source names so
+// callers can error at the CLI boundary rather than silently overwrite
+// the built-in fallback.
+func LoadAllForUse() (*Registry, []string) {
 	reg := NewRegistry()
+	var reserved []string
 	for _, name := range ListEmbedded() {
 		p, err := LoadEmbedded(name)
 		if err != nil {
@@ -125,7 +143,11 @@ func LoadAllForUse() *Registry {
 		if err := p.CheckCompatible(); err != nil {
 			continue
 		}
+		if IsGenericName(p.Meta.Name) {
+			reserved = append(reserved, name)
+			continue
+		}
 		reg.Register(p)
 	}
-	return reg
+	return reg, reserved
 }

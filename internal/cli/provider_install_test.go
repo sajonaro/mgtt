@@ -583,6 +583,129 @@ install:
 	}
 }
 
+// TestInstallFromImage_RejectsReservedGenericName verifies that an image
+// whose baked manifest declares meta.name: generic is rejected at install
+// time rather than silently overwriting the built-in fallback.
+func TestInstallFromImage_RejectsReservedGenericName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	const reservedYAML = `
+meta:
+  name: generic
+  version: 1.0.0
+  description: attempting to shadow the built-in
+install:
+  image:
+    repository: ghcr.io/example/generic
+`
+	fakeDocker := &providersupport.DockerCmd{
+		Run: func(_ context.Context, args ...string) ([]byte, error) {
+			switch args[0] {
+			case "pull":
+				return nil, nil
+			case "create":
+				return []byte("cid-test\n"), nil
+			case "cp":
+				return tarManifest(t, reservedYAML), nil
+			case "rm":
+				return nil, nil
+			}
+			return nil, nil
+		},
+	}
+
+	var buf bytes.Buffer
+	err := installFromImage(
+		context.Background(),
+		&buf,
+		"ghcr.io/example/generic:1.0.0@sha256:deadbeefdeadbeefdeadbeefdeadbeef",
+		"",
+		fakeDocker,
+	)
+	if err == nil {
+		t.Fatal("expected error for provider meta.name=generic")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("error must mention 'reserved'; got %v", err)
+	}
+	// Name override doesn't bypass — the manifest's name is what counts.
+	if _, statErr := os.Stat(filepath.Join(home, "providers", "generic")); !os.IsNotExist(statErr) {
+		t.Errorf("no install dir should be created; stat err=%v", statErr)
+	}
+}
+
+// TestInstallProvider_RejectsReservedGenericName covers the local-path
+// install branch: a manifest on disk declaring meta.name: generic must
+// be rejected before copy + hook run.
+func TestInstallProvider_RejectsReservedGenericName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+	t.Setenv("MGTT_REGISTRY_URL", "disabled")
+
+	srcDir := filepath.Join(home, "src", "fake-generic")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const reservedYAML = `meta:
+  name: generic
+  version: 0.1.0
+  description: attempting to shadow the built-in
+install:
+  source:
+    build: hooks/install.sh
+    clean: hooks/uninstall.sh
+`
+	if err := os.WriteFile(filepath.Join(srcDir, "manifest.yaml"), []byte(reservedYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := installProvider(&buf, srcDir)
+	if err == nil {
+		t.Fatal("expected error for provider meta.name=generic on local-path install")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("error must mention 'reserved'; got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, "providers", "generic")); !os.IsNotExist(statErr) {
+		t.Errorf("no install dir should be created; stat err=%v", statErr)
+	}
+}
+
+// TestLoadRegistryForUse_RejectsReservedGenericName verifies the
+// registry-load path surfaces an error if an on-disk provider declares
+// the reserved name. Pre-fix, it would silently shadow the built-in
+// fallback.
+func TestLoadRegistryForUse_RejectsReservedGenericName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	dir := filepath.Join(home, "providers", "rogue")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "meta:\n" +
+		"  name: generic\n" +
+		"  version: 0.1.0\n" +
+		"  description: rogue\n" +
+		"install:\n" +
+		"  source:\n" +
+		"    build: hooks/install.sh\n" +
+		"    clean: hooks/uninstall.sh\n"
+	if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := loadRegistryForUse()
+	if err == nil {
+		t.Fatal("expected error when an on-disk provider declares the reserved name")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("error must mention 'reserved'; got %v", err)
+	}
+}
+
 func TestInstallFromImage_RejectsUnknownCap(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("MGTT_HOME", home)

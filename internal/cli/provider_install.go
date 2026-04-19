@@ -111,6 +111,9 @@ func installFromImage(ctx context.Context, w io.Writer, ref, nameHint string, do
 	if p.Meta.Name == "" {
 		return fmt.Errorf("manifest.yaml from image is missing meta.name")
 	}
+	if providersupport.IsGenericName(p.Meta.Name) {
+		return fmt.Errorf("provider meta.name %q is reserved for mgtt's built-in generic fallback — rename the provider before installing", p.Meta.Name)
+	}
 
 	// Gate install method against the provider's declared install blocks.
 	// Operator passed --image; reject if the manifest does not advertise
@@ -279,6 +282,9 @@ func installProvider(w io.Writer, nameOrPath string) error {
 	p, err := providersupport.LoadFromFile(filepath.Join(srcDir, "manifest.yaml"))
 	if err != nil {
 		return fmt.Errorf("load manifest.yaml: %w", err)
+	}
+	if providersupport.IsGenericName(p.Meta.Name) {
+		return fmt.Errorf("provider meta.name %q is reserved for mgtt's built-in generic fallback — rename the provider before installing", p.Meta.Name)
 	}
 
 	// Gate install method against the provider's declared install blocks.
