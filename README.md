@@ -44,6 +44,25 @@ $ mgtt plan
 
 4 components probed, 2 eliminated, root cause found. You didn't need to know the system — the model knew it for you.
 
+### Autopilot: hand the loop to `mgtt diagnose`
+
+Same engine, no prompts. Point it at the model and give it a budget:
+
+```
+$ mgtt diagnose --suspect api --max-probes 10
+
+  ▶ probe nginx upstream_count       ✗ unhealthy
+  ▶ probe api ready_replicas         ✗ unhealthy
+  ▶ probe rds available              ✓ healthy  ← eliminated
+  ▶ probe frontend ready_replicas    ✓ healthy  ← eliminated
+
+  Root cause: api.degraded
+  Chain:      nginx ← api
+  Probes run: 4/10
+```
+
+Ideal for AI agents or unattended dry-runs. Scenarios are pre-enumerated offline into a committed `scenarios.yaml`, so diagnose can eliminate whole branches before running a probe.
+
 ---
 
 ## Install
@@ -64,13 +83,13 @@ mgtt simulate --all                # run failure scenarios
 mgtt plan                          # troubleshoot a live system
 ```
 
-**Two modes, same model:**
+**Three moments, one model:**
 
-| | Design time | At 3am |
-|---|---|---|
-| Command | `mgtt simulate` | `mgtt plan` |
-| Facts from | Scenario YAML | Real probes (kubectl, aws) |
-| Output | Pass/fail assertions | Guided root cause |
+| | Design time | At 3am (interactive) | At 3am (autopilot) |
+|---|---|---|---|
+| Command | `mgtt simulate` | `mgtt plan` | `mgtt diagnose` |
+| Facts from | Scenario YAML | Real probes + Y/n | Real probes, no prompts |
+| Output | Pass/fail | Guided root cause | Final report + chain |
 
 ---
 
@@ -84,7 +103,8 @@ mgtt plan                          # troubleshoot a live system
 - [Provider Install Methods](./docs/concepts/provider-install-methods.md) — git clone vs Docker image; both install paths live side by side
 - [Provider Names and Versions](./docs/concepts/provider-fqn-and-versions.md) — FQN and version constraints eliminate provider drift
 - [Model Schema](./docs/reference/model-schema.md) — every field in `system.model.yaml`
-- [Scenario Schema](./docs/reference/scenario-schema.md) — every field in scenario files
+- [Scenario Schema](./docs/reference/scenario-schema.md) — hand-authored `scenarios/*.yaml` for `mgtt simulate`
+- [`scenarios.yaml`](./docs/reference/scenarios-yaml.md) — the generated sidecar `mgtt diagnose` consumes
 - [Type Catalog](./docs/reference/type-catalog.md) — all provider types, facts, and states
 - [CLI Reference](./docs/reference/cli.md) — every command
 - [Provider Registry](./docs/reference/registry.md) — official and community providers

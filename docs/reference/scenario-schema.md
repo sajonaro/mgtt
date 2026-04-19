@@ -1,6 +1,8 @@
 # Scenario Schema Reference
 
-Complete reference for scenario files — the YAML files that define failure simulations.
+Complete reference for the hand-authored scenario files consumed by `mgtt simulate` — the YAML files that define failure simulations.
+
+> Looking for the **generated** sidecar that `mgtt diagnose` reads? That's a different file: [`scenarios.yaml`](scenarios-yaml.md).
 
 ## On this page
 

@@ -42,10 +42,12 @@ components:
 meta:
   name: <string>            # required — system name
   version: <string>         # required — model version (semver)
-  providers:                # required — default providers for all components
+  providers:                # optional — default providers for all components
     - <provider-name>
   vars:                     # optional — variables substituted into probe commands
     <key>: <value>
+  strict_types: <bool>      # optional — reject the generic fallback at validate time
+  scenarios: none           # optional — opt out of scenarios.yaml generation + drift check
 
 components:
   <component-name>:
@@ -66,8 +68,10 @@ components:
 |-------|----------|-------------|
 | `name` | yes | System name. Used in output and state file naming. |
 | `version` | yes | Model version. Quoted string — `"1.0"`, not `1.0`. |
-| `providers` | yes | List of provider names. These are the default providers for all components. Install with `mgtt provider install <name>`. |
+| `providers` | no | List of provider names. Default providers for all components. When omitted or a type isn't matched, mgtt falls back to a built-in `generic.component` that prompts the operator interactively. Install typed providers with `mgtt provider install <name>`. |
 | `vars` | no | Key-value pairs substituted into probe commands as `{key}`. Common: `namespace`, `region`, `cluster`. |
+| `strict_types` | no | `true` rejects the generic fallback: any component whose type has no typed provider becomes a validation error. Default `false` emits one `INFO` line per component that falls back. |
+| `scenarios` | no | Set to `none` to opt the model out of `scenarios.yaml` generation and drift detection. Use for empty placeholder models or works-in-progress where the sidecar would be meaningless. |
 
 ## `components` section
 
@@ -194,8 +198,15 @@ mgtt model validate path/to.yaml # validate a specific file
 
 The validator checks:
 
-- All component types exist in the declared providers
+- All component types exist in the declared providers (or fall back to `generic.component` and emit an `INFO` line, unless `strict_types: true`)
 - All dependency targets exist in `components`
 - No circular dependencies
 - Health expressions reference valid facts for the component's type
 - Expression syntax is correct
+- `state.triggered_by` labels (declared by providers) have at least one `failure_modes.can_cause` producer — unknown labels raise a warning (unreachable state)
+- Existing `scenarios.yaml` sidecar still matches the model + types (source-hash drift) — unless `meta.scenarios: none`
+
+See also:
+
+- [`mgtt model validate --write-scenarios`](cli.md) — regenerate the sidecar after model changes
+- [`scenarios.yaml`](scenarios-yaml.md) — the generated sidecar consumed by `mgtt diagnose`

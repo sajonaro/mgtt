@@ -65,6 +65,7 @@ nav:
     - Manifest Schema: reference/manifest.md
     - Model Schema: reference/model-schema.md
     - Scenario Schema: reference/scenario-schema.md
+    - scenarios.yaml: reference/scenarios-yaml.md
     - Type Catalog: reference/type-catalog.md
     - Specification: reference/spec.md
 

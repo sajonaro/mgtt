@@ -9,7 +9,8 @@ A complete end-to-end example: write a model, write a scenario, validate, simula
 3. [Validate the model](#3-validate-the-model)
 4. [Write failure scenarios](#4-write-failure-scenarios)
 5. [Simulate](#5-simulate)
-6. [Troubleshoot a live system](#6-troubleshoot-a-live-system)
+6. [Generate the scenario sidecar](#6-generate-the-scenario-sidecar)
+7. [Troubleshoot a live system](#7-troubleshoot-a-live-system)
 - [What you have now](#what-you-have-now)
 - [Next steps](#next-steps)
 
@@ -206,9 +207,19 @@ $ mgtt simulate --all
 
 No running system. No credentials. Runs on every PR.
 
-## 6. Troubleshoot a live system
+## 6. Generate the scenario sidecar
 
-When something actually breaks, use the same model with real probes:
+```bash
+$ mgtt model validate --write-scenarios
+
+  wrote 14 scenarios to scenarios.yaml
+```
+
+`scenarios.yaml` enumerates every plausible failure chain your model can produce. Commit it. CI drift-checks it on every PR (runs via `mgtt model validate` or the fast `--check-scenarios` lane). [Full reference](../reference/scenarios-yaml.md).
+
+## 7. Troubleshoot a live system
+
+When something actually breaks, use the same model with real probes. Interactive:
 
 ```bash
 mgtt provider install kubernetes aws   # one-time setup
@@ -217,9 +228,15 @@ mgtt plan                              # press Y at each probe
 mgtt incident end
 ```
 
-(See [Provider Install Methods](../concepts/provider-install-methods.md) for alternatives like image install.)
+Or hand the loop to the autopilot:
 
-The engine walks the dependency graph, probes components in order of information value, and eliminates healthy branches until one failure path remains.
+```bash
+mgtt diagnose --max-probes 15 --suspect api
+```
+
+`diagnose` reads the `scenarios.yaml` you committed in step 6 and eliminates whole failure branches before running a probe. No Y/n prompts — fits AI-agent drivers and unattended dry-runs.
+
+(See [Provider Install Methods](../concepts/provider-install-methods.md) for alternatives like image install.)
 
 [Full troubleshooting walkthrough](../concepts/troubleshooting.md)
 
@@ -230,9 +247,10 @@ The engine walks the dependency graph, probes components in order of information
 ```
 your-project/
 ├── system.model.yaml          # your system description
+├── scenarios.yaml             # auto-generated sidecar (committed)
 ├── scenarios/
-│   ├── rds-unavailable.yaml   # failure scenario
-│   ├── api-crash-loop.yaml    # failure scenario
+│   ├── rds-unavailable.yaml   # hand-authored failure scenario
+│   ├── api-crash-loop.yaml    # hand-authored failure scenario
 │   └── all-healthy.yaml       # no-false-positive check
 └── .github/workflows/
     └── mgtt.yaml              # CI validation (optional)
