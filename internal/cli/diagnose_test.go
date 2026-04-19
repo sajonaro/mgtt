@@ -608,3 +608,37 @@ func TestDiagnose_ParseSuspectHints(t *testing.T) {
 		t.Errorf("hint[1]: want {db,down}; got %+v", got[1])
 	}
 }
+
+// TestShellProbeRunner_ForwardsResource — regression guard for the
+// Resource field. When the strategy-supplied Probe carries Resource,
+// shellProbeRunner must copy it into probe.Command so buildArgs sends
+// the right --name to the provider binary.
+func TestShellProbeRunner_ForwardsResource(t *testing.T) {
+	var captured probe.Command
+	captor := capturingExecutor{
+		capture: &captured,
+		result:  probe.Result{Raw: "true", Parsed: true, Status: probe.StatusOk},
+	}
+	runner := &shellProbeRunner{
+		exec: captor,
+		reg:  providersupport.NewRegistry(),
+	}
+	store := facts.NewInMemory()
+
+	p := &strategy.Probe{
+		Component: "rds",
+		Fact:      "available",
+		Provider:  "aws",
+		Type:      "rds_instance",
+		Resource:  "flowers-magento-stage-rds",
+		Command:   "aws rds describe-db-instances --db-instance-identifier {component}",
+		ParseMode: "bool",
+	}
+
+	if _, err := runner.Run(context.Background(), p, store); err != nil {
+		t.Fatalf("runner.Run: %v", err)
+	}
+	if captured.Resource != "flowers-magento-stage-rds" {
+		t.Errorf("Command.Resource = %q, want %q", captured.Resource, "flowers-magento-stage-rds")
+	}
+}

@@ -482,6 +482,7 @@ func (r *shellProbeRunner) Run(ctx context.Context, p *strategy.Probe, store *fa
 		Component: p.Component,
 		Fact:      p.Fact,
 		Type:      p.Type,
+		Resource:  p.Resource,
 		Vars:      p.Vars,
 		Timeout:   probeTimeout(),
 	})

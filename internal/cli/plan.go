@@ -121,8 +121,10 @@ func runPlan(cmd *cobra.Command, args []string) error {
 		s := tree.Suggested
 		comp := m.Components[s.Component]
 		compType := ""
+		compResource := ""
 		if comp != nil {
 			compType = comp.Type
+			compResource = comp.Resource
 		}
 
 		rendered := probe.Substitute(s.Command, s.Component, m.Meta.Vars, nil)
@@ -138,6 +140,7 @@ func runPlan(cmd *cobra.Command, args []string) error {
 			Component: s.Component,
 			Fact:      s.Fact,
 			Type:      compType,
+			Resource:  compResource,
 			Vars:      m.Meta.Vars,
 			Timeout:   probeTimeout(),
 		})
