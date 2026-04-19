@@ -19,22 +19,61 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 	sb.WriteString("```mermaid\ngraph LR\n")
 
 	names := sortedComponentNames(m)
+
+	// Resolve each component's owning-provider FQN.
+	fqnByComponent := make(map[string]string, len(names))
+	componentsByFQN := make(map[string][]string)
 	for _, n := range names {
-		c := m.Components[n]
-		label := fmt.Sprintf("%s<br/>%s", n, c.Type)
-		openBracket, closeBracket := shapeFor(c.Type)
-		fmt.Fprintf(&sb, "  %s%s%q%s\n", n, openBracket, label, closeBracket)
+		fqn := resolveFQN(m, reg, installed, n)
+		fqnByComponent[n] = fqn
+		componentsByFQN[fqn] = append(componentsByFQN[fqn], n)
 	}
 
-	// Edges. Dependency.On is []string — a single clause can name
-	// multiple upstreams, each becoming its own edge.
+	// Decide flat vs grouped.
+	uniqueFQNs := make([]string, 0, len(componentsByFQN))
+	for f := range componentsByFQN {
+		uniqueFQNs = append(uniqueFQNs, f)
+	}
+	sort.Slice(uniqueFQNs, func(i, j int) bool {
+		// "generic" sorts last; everything else alphabetical.
+		a, b := uniqueFQNs[i], uniqueFQNs[j]
+		if a == "generic" {
+			return false
+		}
+		if b == "generic" {
+			return true
+		}
+		return a < b
+	})
+
+	flat := len(uniqueFQNs) <= 1
+	for _, fqn := range uniqueFQNs {
+		if !flat {
+			fmt.Fprintf(&sb, "  subgraph %s [%q]\n", fqnID(fqn), fqn)
+		}
+		for _, n := range componentsByFQN[fqn] {
+			c := m.Components[n]
+			label := fmt.Sprintf("%s<br/>%s", n, c.Type)
+			openBracket, closeBracket := shapeFor(c.Type)
+			indent := "  "
+			if !flat {
+				indent = "    "
+			}
+			fmt.Fprintf(&sb, "%s%s%s%q%s\n", indent, n, openBracket, label, closeBracket)
+		}
+		if !flat {
+			sb.WriteString("  end\n")
+		}
+	}
+
+	// Edges, sorted by (from, to).
 	type edge struct{ from, to string }
 	var edges []edge
 	for _, n := range names {
 		c := m.Components[n]
 		for _, d := range c.Depends {
-			for _, on := range d.On {
-				edges = append(edges, edge{from: n, to: on})
+			for _, target := range d.On {
+				edges = append(edges, edge{from: n, to: target})
 			}
 		}
 	}
@@ -50,6 +89,36 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 
 	sb.WriteString("```\n")
 	return sb.String(), nil
+}
+
+// resolveFQN returns the owning-provider FQN for component name, or
+// "generic" if the type falls back to the generic provider.
+func resolveFQN(m *Model, reg *providersupport.Registry, installed []InstalledProvider, name string) string {
+	c := m.Components[name]
+	providers := c.Providers
+	if len(providers) == 0 {
+		providers = m.Meta.Providers
+	}
+	_, owner, err := reg.ResolveType(providers, c.Type)
+	if err != nil || owner == "" || owner == providersupport.GenericProviderName {
+		return "generic"
+	}
+	for _, ip := range installed {
+		if ip.Name == owner {
+			if ip.Namespace != "" {
+				return ip.Namespace + "/" + ip.Name
+			}
+			return ip.Name
+		}
+	}
+	return owner
+}
+
+// fqnID turns a FQN like "mgt-tool/kubernetes" into a mermaid-safe
+// identifier "mgt_tool_kubernetes" ([a-zA-Z0-9_] only).
+func fqnID(fqn string) string {
+	r := strings.NewReplacer("/", "_", "-", "_", "@", "_", ".", "_")
+	return r.Replace(fqn)
 }
 
 func sortedComponentNames(m *Model) []string {
