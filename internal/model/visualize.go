@@ -71,6 +71,9 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 		for _, n := range componentsByFQN[fqn] {
 			c := m.Components[n]
 			label := fmt.Sprintf("%s<br/>%s", n, c.Type)
+			if c.Resource != "" && c.Resource != n {
+				label += "<br/>→ " + c.Resource
+			}
 			openBracket, closeBracket := shapeFor(c.Type)
 			indent := "  "
 			if !flat {
