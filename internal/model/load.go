@@ -3,12 +3,36 @@ package model
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/mgt-tool/mgtt/internal/expr"
 
 	"gopkg.in/yaml.v3"
 )
+
+// resourcePlaceholderRE matches {key} placeholders in resource: values.
+// The key is any non-} sequence; substitution lookups hit meta.vars.
+var resourcePlaceholderRE = regexp.MustCompile(`\{([^}]+)\}`)
+
+// substituteResourceVars replaces {key} placeholders in s against vars.
+// Returns an error listing every unresolved key (joined with ", ").
+func substituteResourceVars(s string, vars map[string]string) (string, error) {
+	var unresolved []string
+	result := resourcePlaceholderRE.ReplaceAllStringFunc(s, func(m string) string {
+		key := m[1 : len(m)-1]
+		if v, ok := vars[key]; ok {
+			return v
+		}
+		unresolved = append(unresolved, key)
+		return m
+	})
+	if len(unresolved) > 0 {
+		return s, fmt.Errorf("unresolved placeholder(s): %s", strings.Join(unresolved, ", "))
+	}
+	return result, nil
+}
 
 // rawModel is the top-level YAML structure.
 type rawModel struct {
@@ -133,6 +157,19 @@ func Load(path string) (*Model, error) {
 		}
 
 		m.Components[name] = comp
+	}
+
+	// Expand {key} placeholders in component.Resource against meta.vars.
+	// Unresolved keys are hard errors — fail at load, not at probe time.
+	for name, c := range m.Components {
+		if c.Resource == "" {
+			continue
+		}
+		expanded, err := substituteResourceVars(c.Resource, m.Meta.Vars)
+		if err != nil {
+			return nil, fmt.Errorf("component %q resource: %w", name, err)
+		}
+		c.Resource = expanded
 	}
 
 	// Build the dependency graph.

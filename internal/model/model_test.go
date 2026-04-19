@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/mgt-tool/mgtt/internal/providersupport"
@@ -471,5 +472,61 @@ func TestLoad_ComponentResourceField(t *testing.T) {
 	}
 	if got := m.Components["api"].Resource; got != "" {
 		t.Errorf("api.Resource = %q, want empty", got)
+	}
+}
+
+// TestLoad_ResourceVarSubstitution — {key} placeholders inside
+// resource: expand against meta.vars at load time so a single model
+// ships across environments.
+func TestLoad_ResourceVarSubstitution(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.yaml")
+	body := []byte("" +
+		"meta:\n" +
+		"  name: r\n" +
+		"  version: \"1.0\"\n" +
+		"  vars:\n" +
+		"    env: stage\n" +
+		"components:\n" +
+		"  rds:\n" +
+		"    type: rds_instance\n" +
+		"    resource: flowers-magento-{env}-rds\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if got := m.Components["rds"].Resource; got != "flowers-magento-stage-rds" {
+		t.Errorf("expanded Resource = %q, want %q", got, "flowers-magento-stage-rds")
+	}
+}
+
+// TestLoad_ResourceVarUnresolvedErrors — a {placeholder} with no
+// matching meta.vars entry is a load-time error. We fail loudly so
+// kubectl doesn't see a literal {env} string at 3am.
+func TestLoad_ResourceVarUnresolvedErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.yaml")
+	body := []byte("" +
+		"meta:\n" +
+		"  name: r\n" +
+		"  version: \"1.0\"\n" +
+		"components:\n" +
+		"  rds:\n" +
+		"    type: rds_instance\n" +
+		"    resource: flowers-magento-{env}-rds\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unresolved {env}; got nil")
+	}
+	if !strings.Contains(err.Error(), "env") {
+		t.Errorf("error should name the unresolved key; got %v", err)
 	}
 }
