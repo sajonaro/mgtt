@@ -217,3 +217,84 @@ func TestFilterLive_UndefinedPredicateKeeps(t *testing.T) {
 		t.Fatalf("undefined predicate should keep scenario live; got %d", len(live))
 	}
 }
+
+// TestFilterLive_AbsentComponentEliminatesFailureStates verifies that
+// once the probe layer has recorded a not_found fact, scenarios that
+// require a non-default state on that component are eliminated — a
+// missing component can't be "stopped", "draining", etc.
+func TestFilterLive_AbsentComponentEliminatesFailureStates(t *testing.T) {
+	typ := &providersupport.Type{
+		Name:               "service",
+		DefaultActiveState: "live",
+		States: []providersupport.StateDef{
+			{Name: "stopped", When: expr.CmpNode{Fact: "status", Op: expr.OpEq, Value: "stopped"}},
+			{Name: "live"},
+		},
+	}
+	prov := &providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{"service": typ},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(prov)
+
+	m := &model.Model{
+		Meta: model.Meta{Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"svc": {Name: "svc", Type: "service"},
+		},
+		Order: []string{"svc"},
+	}
+
+	store := facts.NewInMemory()
+	store.Append("svc", facts.Fact{Key: "exists", Status: facts.FactStatusNotFound, At: time.Now()})
+
+	scs := []scenarios.Scenario{
+		{ID: "stopped", Chain: []scenarios.Step{{Component: "svc", State: "stopped"}}},
+		{ID: "live", Chain: []scenarios.Step{{Component: "svc", State: "live"}}},
+	}
+	live := FilterLive(scs, store, m, reg)
+	if len(live) != 1 {
+		t.Fatalf("want 1 live (default-state); got %d: %+v", len(live), live)
+	}
+	if live[0].ID != "live" {
+		t.Errorf("absent component: only the default-active state should stay live; got %s", live[0].ID)
+	}
+}
+
+// TestFilterLive_AbsentComponentWithoutDefaultStateEliminatesAll — when
+// the type declares no default_active_state, an absent component has
+// no "harmless" survivor state and every scenario referencing it dies.
+func TestFilterLive_AbsentComponentWithoutDefaultStateEliminatesAll(t *testing.T) {
+	typ := &providersupport.Type{
+		Name: "service",
+		States: []providersupport.StateDef{
+			{Name: "any", When: expr.CmpNode{Fact: "status", Op: expr.OpEq, Value: "x"}},
+		},
+	}
+	prov := &providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{"service": typ},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(prov)
+
+	m := &model.Model{
+		Meta: model.Meta{Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"svc": {Name: "svc", Type: "service"},
+		},
+		Order: []string{"svc"},
+	}
+
+	store := facts.NewInMemory()
+	store.Append("svc", facts.Fact{Key: "exists", Status: facts.FactStatusNotFound, At: time.Now()})
+
+	scs := []scenarios.Scenario{
+		{ID: "any", Chain: []scenarios.Step{{Component: "svc", State: "any"}}},
+	}
+	live := FilterLive(scs, store, m, reg)
+	if len(live) != 0 {
+		t.Fatalf("type with no default_active_state: absent component eliminates every scenario; got %d live", len(live))
+	}
+}
