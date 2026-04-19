@@ -54,3 +54,31 @@ func TestVisualize_CommandWritesFile(t *testing.T) {
 		}
 	}
 }
+
+// TestVisualize_CommandDefaultOutputPath — without --output, writes
+// model-graph.md next to the model.
+func TestVisualize_CommandDefaultOutputPath(t *testing.T) {
+	t.Cleanup(func() {
+		visualizeFlags.modelPath = ""
+		visualizeFlags.outputPath = ""
+	})
+	dir := t.TempDir()
+	modelPath := filepath.Join(dir, "model.yaml")
+	body := []byte("meta:\n  name: d\n  version: \"1.0\"\ncomponents:\n  a:\n    type: service\n")
+	if err := os.WriteFile(modelPath, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	cmd := RootCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"visualize", "--model", modelPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("command failed: %v\noutput:\n%s", err, buf.String())
+	}
+	defaultPath := filepath.Join(dir, "model-graph.md")
+	if _, err := os.Stat(defaultPath); err != nil {
+		t.Errorf("default output file missing: %v", err)
+	}
+}
