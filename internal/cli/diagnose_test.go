@@ -609,6 +609,55 @@ func TestDiagnose_ParseSuspectHints(t *testing.T) {
 	}
 }
 
+// TestDiagnose_TrailShowsResourceWhenDiffers — when a component has
+// a resource override (Component.Resource != Component.Name), the
+// diagnose trail names the resource alongside the component. At 3am
+// the operator needs to know which AWS resource is being probed, not
+// just the mgtt component key.
+func TestDiagnose_TrailShowsResourceWhenDiffers(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "r", Version: "1.0", Providers: []string{"aws"}},
+		Components: map[string]*model.Component{
+			"rds": {Name: "rds", Type: "rds_instance", Resource: "flowers-stage-rds"},
+		},
+		Order: []string{"rds"},
+	}
+	m.BuildGraph()
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta: providersupport.ProviderMeta{Name: "aws"},
+		Types: map[string]*providersupport.Type{
+			"rds_instance": {
+				Name: "rds_instance",
+				Facts: map[string]*providersupport.FactSpec{
+					"available": {Probe: providersupport.ProbeDef{Cmd: "", Cost: "low", Access: "read"}},
+				},
+				States: []providersupport.StateDef{
+					{Name: "stopped", When: expr.CmpNode{Fact: "available", Op: expr.OpEq, Value: false}},
+				},
+			},
+		},
+	})
+	scs := []scenarios.Scenario{
+		{ID: "s1", Root: scenarios.RootRef{Component: "rds", State: "stopped"}, Chain: []scenarios.Step{{Component: "rds", State: "stopped", Observes: []string{"available"}}}},
+	}
+	withLoader(t, m, reg, scs)
+	withRunner(t, &stubProbeRunner{values: map[string]any{"rds.available": true}})
+
+	out, err := runDiagnoseCaptured(t, diagnoseFlags{maxProbes: 5, deadline: 5 * time.Second, onWrite: "pause", readonlyOnly: true})
+	if err != nil {
+		t.Fatalf("diagnose: %v\n%s", err, out)
+	}
+	// Trail should mention both the component key "rds" and the
+	// resource "flowers-stage-rds" on the same line (or near it).
+	if !strings.Contains(out, "flowers-stage-rds") {
+		t.Errorf("trail should name the resource; got:\n%s", out)
+	}
+	if !strings.Contains(out, "rds") {
+		t.Errorf("trail should also name the component; got:\n%s", out)
+	}
+}
+
 // TestShellProbeRunner_ForwardsResource — regression guard for the
 // Resource field. When the strategy-supplied Probe carries Resource,
 // shellProbeRunner must copy it into probe.Command so buildArgs sends

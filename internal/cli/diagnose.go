@@ -143,7 +143,7 @@ func runDiagnose(cmd *cobra.Command, f diagnoseFlags) error {
 
 		switch {
 		case decision.Done:
-			reportDone(cmd, decision.RootCause, trail, probesRun, f.maxProbes, start, f.deadline, suspects)
+			reportDone(cmd, m, decision.RootCause, trail, probesRun, f.maxProbes, start, f.deadline, suspects)
 			return nil
 		case decision.Stuck:
 			reportStuck(cmd, store, trail, probesRun, f.maxProbes, start, f.deadline)
@@ -512,7 +512,7 @@ func (r *shellProbeRunner) Run(ctx context.Context, p *strategy.Probe, store *fa
 
 // reportDone prints the terminal success report: single scenario remains,
 // show the chain, trail, and suspect commentary.
-func reportDone(cmd *cobra.Command, root *scenarios.Scenario, trail []probeRecord, probesRun, maxProbes int, start time.Time, deadline time.Duration, suspects []strategy.SuspectHint) {
+func reportDone(cmd *cobra.Command, m *model.Model, root *scenarios.Scenario, trail []probeRecord, probesRun, maxProbes int, start time.Time, deadline time.Duration, suspects []strategy.SuspectHint) {
 	w := cmd.OutOrStdout()
 	if root == nil {
 		fmt.Fprintln(w, "Root cause: (none — all components healthy)")
@@ -520,7 +520,7 @@ func reportDone(cmd *cobra.Command, root *scenarios.Scenario, trail []probeRecor
 		writeTrail(w, trail)
 		return
 	}
-	fmt.Fprintf(w, "Root cause: %s\n", root.Root.Component)
+	fmt.Fprintf(w, "Root cause: %s\n", formatComponentLabel(m, root.Root.Component))
 	fmt.Fprintf(w, "Scenario:   %s\n", renderChain(*root))
 	writeBudget(w, probesRun, maxProbes, start, deadline)
 	if hint := suspectReport(suspects, root); hint != "" {
@@ -576,8 +576,41 @@ func writeTrail(w io.Writer, trail []probeRecord) {
 	}
 	fmt.Fprintln(w, "Trail:")
 	for i, r := range trail {
-		fmt.Fprintf(w, "  %d. %s\n", i+1, r.outcome)
+		fmt.Fprintf(w, "  %d. %s — %s\n", i+1, formatProbeLabel(r.probe), r.outcome)
 	}
+}
+
+// formatProbeLabel returns a human-readable "component.fact" label,
+// annotated with "(resource: <id>)" when the probe targets a distinct
+// upstream resource. Keeps the trail stable for models that don't use
+// the resource: override.
+func formatProbeLabel(p *strategy.Probe) string {
+	if p == nil {
+		return ""
+	}
+	if p.Resource != "" && p.Resource != p.Component {
+		return fmt.Sprintf("%s.%s (resource: %s)", p.Component, p.Fact, p.Resource)
+	}
+	return fmt.Sprintf("%s.%s", p.Component, p.Fact)
+}
+
+// formatComponentLabel returns the component name, annotated with
+// "(resource: <id>)" when the model declares an explicit Resource
+// override that differs from the component key. Used in the Done
+// report so the operator sees the upstream identifier without
+// cross-referencing the model file.
+func formatComponentLabel(m *model.Model, name string) string {
+	if m == nil {
+		return name
+	}
+	comp := m.Components[name]
+	if comp == nil {
+		return name
+	}
+	if comp.Resource != "" && comp.Resource != name {
+		return fmt.Sprintf("%s (resource: %s)", name, comp.Resource)
+	}
+	return name
 }
 
 // renderChain returns "rds.stopped → api.crash_looping → nginx.degraded".
