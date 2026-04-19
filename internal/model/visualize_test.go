@@ -332,6 +332,42 @@ func TestRender_MultiTargetDependency(t *testing.T) {
 	}
 }
 
+// TestRender_ResourceSubtitleWhenDiffers — when a component has a
+// non-empty Resource that differs from its key, the rendered node
+// label shows the resource on a third line. This helps operators
+// scanning the diagram know which AWS/kubectl resource each node
+// actually probes.
+func TestRender_ResourceSubtitleWhenDiffers(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "r", Version: "1.0", Providers: []string{"aws"}},
+		Components: map[string]*model.Component{
+			"rds": {Name: "rds", Type: "rds_instance", Resource: "flowers-stage-rds"},
+			"api": {Name: "api", Type: "service"}, // no Resource set
+		},
+		Order: []string{"rds", "api"},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta: providersupport.ProviderMeta{Name: "aws"},
+		Types: map[string]*providersupport.Type{
+			"rds_instance": {Name: "rds_instance"},
+			"service":      {Name: "service"},
+		},
+	})
+	installed := []model.InstalledProvider{{Name: "aws"}}
+
+	got, _ := model.Render(m, reg, installed)
+
+	// rds: Resource differs, show subtitle.
+	if !strings.Contains(got, "rds<br/>rds_instance<br/>→ flowers-stage-rds") {
+		t.Errorf("rds label missing resource subtitle; got:\n%s", got)
+	}
+	// api: Resource empty, no subtitle leak.
+	if strings.Contains(got, "api<br/>service<br/>→") {
+		t.Errorf("api shouldn't have resource subtitle; got:\n%s", got)
+	}
+}
+
 // TestRender_EmptyModel — a model with 0 components renders a
 // placeholder comment, not malformed mermaid.
 func TestRender_EmptyModel(t *testing.T) {
