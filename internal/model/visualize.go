@@ -18,6 +18,19 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 	fmt.Fprintf(&sb, "# %s — dependency graph\n\n", m.Meta.Name)
 	sb.WriteString("```mermaid\ngraph LR\n")
 
+	// Cycle detection: emit a warning comment but keep rendering. The
+	// warning tells operators the layout may be unstable; downstream
+	// tools (mermaid itself, mkdocs) still parse the graph fine. Tests
+	// that construct Model literals without calling BuildGraph land
+	// with m.graph == nil — guard for that.
+	if m.graph == nil {
+		m.BuildGraph()
+	}
+	if cycle := m.graph.DetectCycle(); cycle != nil {
+		fmt.Fprintf(&sb, "  %%%% warning: cycle detected (%s) — mermaid layout may be unstable\n",
+			strings.Join(cycle, " -> "))
+	}
+
 	names := sortedComponentNames(m)
 
 	// Resolve each component's owning-provider FQN.

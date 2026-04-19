@@ -215,3 +215,31 @@ func TestRender_Deterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestRender_CycleTolerated — a dependency cycle produces a warning
+// comment inside the mermaid block but does not error.
+func TestRender_CycleTolerated(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "cyclic", Version: "1.0", Providers: []string{"k8s"}},
+		Components: map[string]*model.Component{
+			"a": {Name: "a", Type: "deployment", Depends: []model.Dependency{{On: []string{"b"}}}},
+			"b": {Name: "b", Type: "deployment", Depends: []model.Dependency{{On: []string{"a"}}}},
+		},
+		Order: []string{"a", "b"},
+	}
+	m.BuildGraph()
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "k8s"},
+		Types: map[string]*providersupport.Type{"deployment": {Name: "deployment"}},
+	})
+	installed := []model.InstalledProvider{{Name: "k8s"}}
+
+	got, err := model.Render(m, reg, installed)
+	if err != nil {
+		t.Fatalf("cycle should not error; got %v", err)
+	}
+	if !strings.Contains(got, "%% warning: cycle detected") {
+		t.Errorf("want cycle warning comment; got:\n%s", got)
+	}
+}
