@@ -575,23 +575,36 @@ func writeTrail(w io.Writer, trail []probeRecord) {
 		return
 	}
 	fmt.Fprintln(w, "Trail:")
+	// Only annotate the resource on the FIRST row per component — spec
+	// §5.2 says "a subtitle on the first mention of each component".
+	// Repeating it on every row adds noise with zero new information.
+	seen := make(map[string]bool, len(trail))
 	for i, r := range trail {
-		fmt.Fprintf(w, "  %d. %s — %s\n", i+1, formatProbeLabel(r.probe), r.outcome)
+		label := formatProbeLabel(r.probe, seen)
+		if r.probe != nil {
+			seen[r.probe.Component] = true
+		}
+		fmt.Fprintf(w, "  %d. %s — %s\n", i+1, label, r.outcome)
 	}
 }
 
-// formatProbeLabel returns a human-readable "component.fact" label,
-// annotated with "(resource: <id>)" when the probe targets a distinct
-// upstream resource. Keeps the trail stable for models that don't use
-// the resource: override.
-func formatProbeLabel(p *strategy.Probe) string {
+// formatProbeLabel returns a human-readable "component.fact" label.
+// When the probe targets a distinct upstream resource AND this is the
+// first mention of the component in the trail (seen map), the label
+// gains a "(resource: <id>)" annotation. Subsequent probes on the same
+// component skip the suffix to keep the trail compact.
+func formatProbeLabel(p *strategy.Probe, seen map[string]bool) string {
 	if p == nil {
 		return ""
 	}
-	if p.Resource != "" && p.Resource != p.Component {
-		return fmt.Sprintf("%s.%s (resource: %s)", p.Component, p.Fact, p.Resource)
+	base := fmt.Sprintf("%s.%s", p.Component, p.Fact)
+	if p.Resource == "" || p.Resource == p.Component {
+		return base
 	}
-	return fmt.Sprintf("%s.%s", p.Component, p.Fact)
+	if seen != nil && seen[p.Component] {
+		return base
+	}
+	return fmt.Sprintf("%s (resource: %s)", base, p.Resource)
 }
 
 // formatComponentLabel returns the component name, annotated with
