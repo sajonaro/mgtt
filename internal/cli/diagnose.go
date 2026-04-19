@@ -13,6 +13,7 @@ import (
 
 	"github.com/mgt-tool/mgtt/internal/engine/strategy"
 	"github.com/mgt-tool/mgtt/internal/facts"
+	"github.com/mgt-tool/mgtt/internal/incident"
 	"github.com/mgt-tool/mgtt/internal/model"
 	"github.com/mgt-tool/mgtt/internal/providersupport"
 	"github.com/mgt-tool/mgtt/internal/providersupport/probe"
@@ -107,17 +108,28 @@ func runDiagnose(cmd *cobra.Command, f diagnoseFlags) error {
 		return err
 	}
 
-	store := facts.NewInMemory()
+	// Load the active incident's fact store when present — same as
+	// `mgtt plan`. Lets operators pre-seed observations (e.g. `mgtt fact
+	// add cloudflare operator_says_healthy true` in CI to anchor a
+	// generic terminal) before autopilot starts.
+	var store *facts.Store
+	if inc, incErr := incident.Current(); incErr == nil && inc.Store != nil {
+		store = inc.Store
+	} else {
+		store = facts.NewInMemory()
+	}
 	suspects := parseSuspectHints(f.suspect)
 	trail := []probeRecord{}
 	start := time.Now()
 	probesRun := 0
 
-	// Non-TTY stdin + generic components = infinite skip loop (EOF on
-	// every prompt) that silently burns the probe budget. Reject early
-	// when we can tell the operator can't actually answer.
-	if !stdinLooksInteractive(diagnoseStdin) && modelUsesGenericComponent(m, reg) {
-		return fmt.Errorf("mgtt diagnose requires an interactive terminal for generic components: stdin is not a TTY and at least one component resolves to the built-in generic fallback; rerun from a terminal or replace generic components with typed ones")
+	// Non-TTY stdin + UNSEEDED generic components = infinite skip loop
+	// (EOF on every prompt) that silently burns the probe budget. Reject
+	// early only when a generic component has no pre-seeded facts — if
+	// the operator already recorded operator_says_healthy via `mgtt fact
+	// add`, diagnose will never prompt, so CI is fine.
+	if !stdinLooksInteractive(diagnoseStdin) && modelUsesUnseededGenericComponent(m, reg, store) {
+		return fmt.Errorf("mgtt diagnose requires an interactive terminal for generic components: stdin is not a TTY and at least one generic component has no pre-seeded facts; rerun from a terminal, pre-seed via `mgtt fact add <component> operator_says_healthy true`, or replace generic components with typed ones")
 	}
 
 	for probesRun < f.maxProbes {
@@ -389,14 +401,32 @@ func applyOperatorAnswer(store *facts.Store, compName, answer string) {
 }
 
 // modelUsesGenericComponent returns true if any component in the model
-// resolves to the built-in generic provider. Used to short-circuit
-// non-TTY runs where the operator can't actually answer the prompt.
+// resolves to the built-in generic provider.
 func modelUsesGenericComponent(m *model.Model, reg *providersupport.Registry) bool {
 	if m == nil || reg == nil {
 		return false
 	}
 	for name := range m.Components {
 		if isGenericComponent(m, reg, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// modelUsesUnseededGenericComponent returns true only when a generic
+// component exists AND its operator_says_healthy fact has not been
+// pre-seeded in store. Used by the non-TTY gate: if CI recorded the
+// answer in advance, diagnose can run without prompting.
+func modelUsesUnseededGenericComponent(m *model.Model, reg *providersupport.Registry, store *facts.Store) bool {
+	if m == nil || reg == nil {
+		return false
+	}
+	for name := range m.Components {
+		if !isGenericComponent(m, reg, name) {
+			continue
+		}
+		if store == nil || store.Latest(name, "operator_says_healthy") == nil {
 			return true
 		}
 	}
