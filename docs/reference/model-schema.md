@@ -80,9 +80,38 @@ Each key under `components` is the component name. Names must be unique within t
 | Field | Required | Description |
 |-------|----------|-------------|
 | `type` | yes | A type defined by one of the listed providers. See [Type Catalog](type-catalog.md) for available types. |
+| `resource` | no | Upstream resource identifier. When set, the provider looks up `<resource>` instead of the component key at probe time. Lets you keep readable component keys (e.g. `rds:`) while probing the real AWS / kubectl / etc. resource (e.g. `flowers-magento-stage-rds`). Supports `{key}` placeholders that expand against `meta.vars` at load time — a model shipped across environments can use `resource: flowers-magento-{env}-rds`. Unresolved placeholders are a load-time error. |
 | `providers` | no | Override `meta.providers` for this component. Use when a component belongs to a different provider (e.g., an AWS RDS database in a Kubernetes-heavy model). |
 | `depends` | no | List of dependency entries. See [Dependencies](#dependencies) below. |
 | `healthy` | no | Additional health conditions beyond the provider's defaults. See [Health expressions](#health-expressions) below. |
+
+### Readable component keys vs. provider resource identifiers
+
+Real infrastructure identifiers are often noisy (`E3KZFY94NX8AUZ`, `flowers-magento-stage-media-a12d4c`, `/dev-automation/defaults/env_php`). Use `resource:` to keep the model's dependency graph readable while probes hit the real resources:
+
+```yaml
+components:
+  rds:
+    type: rds_instance
+    resource: flowers-magento-stage-rds
+  cdn:
+    type: cloudfront_distribution
+    resource: E3KZFY94NX8AUZ
+```
+
+`meta.vars` substitution lets a single model ship across environments:
+
+```yaml
+meta:
+  vars:
+    env: stage
+components:
+  rds:
+    type: rds_instance
+    resource: flowers-magento-{env}-rds   # expands to flowers-magento-stage-rds
+```
+
+Unresolved `{key}` placeholders are a load-time error — better to fail here than to produce a literal `{env}` string in a kubectl call at 3am.
 
 ### Dependencies
 
@@ -205,6 +234,7 @@ The validator checks:
 - Expression syntax is correct
 - `state.triggered_by` labels (declared by providers) have at least one `failure_modes.can_cause` producer — unknown labels raise a warning (unreachable state)
 - Existing `scenarios.yaml` sidecar still matches the model + types (source-hash drift) — unless `meta.scenarios: none`
+- Duplicate `(type, resource)` tuples under the same provider produce a warning (usually a copy-paste mistake; legitimate when two probes target one resource with different fact sets).
 
 See also:
 
