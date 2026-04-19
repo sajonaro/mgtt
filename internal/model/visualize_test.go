@@ -99,3 +99,58 @@ func TestRender_ShapesByTypeClass(t *testing.T) {
 		}
 	}
 }
+
+// TestRender_MultiProviderSubgraphs — components are grouped into one
+// mermaid subgraph per resolved provider FQN. Subgraphs sorted
+// alphabetically by FQN; the synthetic "generic" bucket sorts last
+// (no components fall back here in this test).
+func TestRender_MultiProviderSubgraphs(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "multi", Version: "1.0", Providers: []string{"k8s", "aws"}},
+		Components: map[string]*model.Component{
+			"nginx": {Name: "nginx", Type: "deployment", Depends: []model.Dependency{{On: []string{"rds"}}}},
+			"rds":   {Name: "rds", Type: "rds_instance"},
+		},
+		Order: []string{"nginx", "rds"},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "k8s"},
+		Types: map[string]*providersupport.Type{"deployment": {Name: "deployment"}},
+	})
+	reg.Register(&providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "aws"},
+		Types: map[string]*providersupport.Type{"rds_instance": {Name: "rds_instance"}},
+	})
+	installed := []model.InstalledProvider{
+		{Name: "k8s", Namespace: "mgt-tool", Version: "3.0.0"},
+		{Name: "aws", Namespace: "mgt-tool", Version: "1.0.0"},
+	}
+
+	got, err := model.Render(m, reg, installed)
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+
+	// Two subgraphs, sorted by FQN.
+	awsIdx := strings.Index(got, `subgraph mgt_tool_aws ["mgt-tool/aws"]`)
+	k8sIdx := strings.Index(got, `subgraph mgt_tool_k8s ["mgt-tool/k8s"]`)
+	if awsIdx < 0 || k8sIdx < 0 {
+		t.Fatalf("missing subgraph declarations in:\n%s", got)
+	}
+	if awsIdx > k8sIdx {
+		t.Errorf("aws subgraph should appear before k8s (alphabetical FQN); got aws@%d k8s@%d", awsIdx, k8sIdx)
+	}
+	// Each component inside its provider's subgraph.
+	if !strings.Contains(got, "subgraph mgt_tool_aws") || !strings.Contains(got[awsIdx:], `rds[(`) {
+		t.Errorf("rds should be inside mgt-tool/aws subgraph:\n%s", got)
+	}
+	// Edges emitted at the top level after all subgraphs close.
+	if !strings.Contains(got, "nginx --> rds") {
+		t.Errorf("missing cross-subgraph edge; got:\n%s", got)
+	}
+	// Subgraphs are closed with `end`.
+	if strings.Count(got, "\n  end\n") != 2 {
+		t.Errorf("expected 2 subgraph closers, got %d:\n%s", strings.Count(got, "\n  end\n"), got)
+	}
+}
