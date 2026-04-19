@@ -24,6 +24,13 @@ func (r *Registry) Register(p *Provider) {
 	r.providers[name] = p
 }
 
+// IsGenericName reports whether name is reserved for the embedded
+// generic fallback provider. Exported so install paths / loaders can
+// enforce the reservation before calling Register.
+func IsGenericName(name string) bool {
+	return name == GenericProviderName
+}
+
 func (r *Registry) Get(name string) (*Provider, bool) {
 	p, ok := r.providers[name]
 	return p, ok
