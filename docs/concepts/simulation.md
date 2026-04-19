@@ -314,7 +314,7 @@ The same `system.model.yaml` serves both phases:
 
 | | Design time | Runtime |
 |---|---|---|
-| Facts source | `scenarios/*.yaml` (injected) | Live probes (kubectl, aws) |
+| Facts source | `scenarios/*.yaml` (injected) | Live probes via installed providers |
 | Command | `mgtt simulate` | `mgtt plan` |
 | Needs | Nothing — no credentials, no cluster | Environment credentials |
 | Runs in | CI pipeline | On-call engineer's laptop |
