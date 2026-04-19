@@ -96,6 +96,27 @@ $ mgtt plan
 
 [Full troubleshooting walkthrough](concepts/troubleshooting.md)
 
+### Autopilot: `mgtt diagnose`
+
+Same engine, no prompts. Hand it a probe budget and get a final report:
+
+```
+$ mgtt diagnose --suspect api --max-probes 10
+
+  ▶ probe nginx upstream_count       ✗ unhealthy
+  ▶ probe api ready_replicas         ✗ unhealthy
+  ▶ probe rds available              ✓ healthy  ← eliminated
+  ▶ probe frontend ready_replicas    ✓ healthy  ← eliminated
+
+  Root cause: api.degraded
+  Chain:      nginx ← api
+  Probes run: 4/10
+```
+
+Failure chains are pre-enumerated into a committed `scenarios.yaml` at design time, so diagnose eliminates whole branches before running a probe.
+
+[`mgtt diagnose` reference](concepts/troubleshooting.md#autopilot-mode-mgtt-diagnose) | [scenarios.yaml](reference/scenarios-yaml.md)
+
 ---
 
 ## What mgtt gives you
@@ -104,14 +125,14 @@ One model, three moments:
 
 - **Model once** — describe components, dependencies, and what "healthy" means in YAML.
 - **Simulate in CI** — inject synthetic failures; assert the engine reasons correctly; catch model gaps before production.
-- **Troubleshoot at 3am** — press Y (or let an AI agent drive); the engine picks the most informative probe at every step.
+- **Troubleshoot at 3am** — press Y (`mgtt plan`) or hand the loop over (`mgtt diagnose`); the engine picks the most informative probe at every step.
 
-|             | Design time     | At 3am                       |
-|-------------|-----------------|------------------------------|
-| Command     | `mgtt simulate` | `mgtt plan`                  |
-| Facts from  | scenario YAML   | real probes (kubectl, aws)   |
-| Driven by   | CI pipeline     | SRE or AI agent              |
-| Output      | pass/fail       | guided root cause            |
+|             | Design time     | At 3am (interactive)         | At 3am (autopilot)          |
+|-------------|-----------------|------------------------------|-----------------------------|
+| Command     | `mgtt simulate` | `mgtt plan`                  | `mgtt diagnose`             |
+| Facts from  | scenario YAML   | real probes + Y/n            | real probes, no prompts     |
+| Driven by   | CI pipeline     | SRE                          | AI agent or unattended run  |
+| Output      | pass/fail       | guided root cause            | final report + chain        |
 
 ## Get started
 
@@ -138,7 +159,8 @@ One model, three moments:
 ## Reference
 
 - [Model Schema](reference/model-schema.md) — every field in `system.model.yaml`
-- [Scenario Schema](reference/scenario-schema.md) — every field in scenario files
+- [Scenario Schema](reference/scenario-schema.md) — hand-authored `scenarios/*.yaml` for `mgtt simulate`
+- [`scenarios.yaml`](reference/scenarios-yaml.md) — the generated sidecar `mgtt diagnose` consumes
 - [Type Catalog](reference/type-catalog.md) — all provider types, facts, states, and failure modes
 - [CLI Reference](reference/cli.md) — every command
 - [Full Specification](reference/spec.md) — the v1.0 spec

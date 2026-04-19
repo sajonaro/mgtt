@@ -249,6 +249,55 @@ mgtt plan --component api
 
 ---
 
+## Autopilot mode — `mgtt diagnose`
+
+Same engine, no prompts. `mgtt diagnose` runs the probe loop end-to-end until one of:
+
+- a single failure chain survives (root cause),
+- every chain is eliminated (no failure found),
+- the probe budget or deadline is reached,
+- the next probe would require writes.
+
+```bash
+$ mgtt diagnose --suspect api --max-probes 10
+
+  ▶ probe nginx upstream_count         ✓ 0        ✗ unhealthy
+  ▶ probe api ready_replicas           ✓ 0        ✗ unhealthy
+  ▶ probe rds available                ✓ true     ✓ healthy  ← eliminated
+  ▶ probe frontend ready_replicas      ✓ 2        ✓ healthy  ← eliminated
+
+  Root cause: api.degraded
+  Chain:      nginx ← api
+  Probes run: 4/10   Time: 1.2s/5m
+```
+
+Flags ([full list](../reference/cli.md)):
+
+| Flag | Purpose |
+|------|---------|
+| `--suspect api,db.down` | Soft prior — components (or `component.state`) you already think are broken |
+| `--readonly-only` | (default `true`) refuse probes whose provider isn't `read_only: true` |
+| `--max-probes N` | Budget — stop after N probes (default 20) |
+| `--deadline 5m` | Wall-clock deadline |
+| `--on-write pause\|run\|fail` | What to do when the next probe would write |
+
+### When `mgtt diagnose` needs an operator
+
+If a component falls back to the built-in generic type — no typed provider matches its `type:` — there's no shell command to run. Diagnose prompts you per fact: `healthy / unhealthy / skip`. This requires an interactive terminal; redirecting stdin from `/dev/null` exits early with an actionable error.
+
+### `diagnose` vs `plan`
+
+| | `mgtt plan` | `mgtt diagnose` |
+|---|---|---|
+| Prompts | Y/n per probe | None (autopilot) |
+| Needs | operator in the loop | nothing, by default |
+| Output | per-step | single final report |
+| Fits | live incident, operator-led | AI agent driver, unattended CI dry-run, large probe budgets |
+
+Both consume the same `system.model.yaml`. `diagnose` additionally reads [`scenarios.yaml`](../reference/scenarios-yaml.md) when present to pick probes more aggressively via the `occam` strategy.
+
+---
+
 ## Before the incident
 
 The model and failure scenarios can be validated before the system is deployed. See [Simulation](simulation.md) for the design-time workflow — writing scenarios, running them in CI, and what failing scenarios reveal about the model.
