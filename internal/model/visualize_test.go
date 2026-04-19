@@ -244,6 +244,94 @@ func TestRender_CycleTolerated(t *testing.T) {
 	}
 }
 
+// TestRender_MermaidSafeNodeIDs — component keys often contain `/`, `-`,
+// `.`, or `@` in real models (SSM parameter paths, k8s resource names,
+// FQN-style keys). Mermaid's grammar tokenises node ids as [A-Za-z0-9_],
+// so the emitted id must be sanitised. The readable original name stays
+// in the quoted label.
+func TestRender_MermaidSafeNodeIDs(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "ids", Version: "1.0", Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"/dev-automation/defaults/env_php": {
+				Name: "/dev-automation/defaults/env_php",
+				Type: "ssm_parameter",
+			},
+			"magento-nginx-blue": {
+				Name:    "magento-nginx-blue",
+				Type:    "deployment",
+				Depends: []model.Dependency{{On: []string{"/dev-automation/defaults/env_php"}}},
+			},
+		},
+		Order: []string{"magento-nginx-blue", "/dev-automation/defaults/env_php"},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta: providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{
+			"ssm_parameter": {Name: "ssm_parameter"},
+			"deployment":    {Name: "deployment"},
+		},
+	})
+	installed := []model.InstalledProvider{{Name: "p"}}
+
+	got, err := model.Render(m, reg, installed)
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+
+	// IDs: sanitized form in both node declarations and edges.
+	for _, wantID := range []string{
+		`_dev_automation_defaults_env_php["/dev-automation/defaults/env_php<br/>`,
+		`magento_nginx_blue["magento-nginx-blue<br/>`,
+		"\n  magento_nginx_blue --> _dev_automation_defaults_env_php\n",
+	} {
+		if !strings.Contains(got, wantID) {
+			t.Errorf("missing sanitized form %q in output:\n%s", wantID, got)
+		}
+	}
+
+	// Unsanitized forms must NOT appear as node ids or edge endpoints.
+	// They MAY appear inside quoted labels, which is intentional — we
+	// check that edge lines don't contain the raw names.
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "-->") {
+			for _, bad := range []string{"/dev-automation", "magento-nginx-blue -->", "--> /dev-automation"} {
+				if strings.Contains(line, bad) {
+					t.Errorf("edge line %q leaks unsanitized id: contains %q", line, bad)
+				}
+			}
+		}
+	}
+}
+
+// TestRender_MultiTargetDependency — Dependency.On is []string; the
+// renderer must emit one edge per target, not collapse or drop.
+func TestRender_MultiTargetDependency(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "fanout", Version: "1.0", Providers: []string{"p"}},
+		Components: map[string]*model.Component{
+			"api": {Name: "api", Type: "service", Depends: []model.Dependency{{On: []string{"db", "cache"}}}},
+			"db":  {Name: "db", Type: "service"},
+			"cache": {Name: "cache", Type: "service"},
+		},
+		Order: []string{"api", "db", "cache"},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "p"},
+		Types: map[string]*providersupport.Type{"service": {Name: "service"}},
+	})
+	installed := []model.InstalledProvider{{Name: "p"}}
+
+	got, _ := model.Render(m, reg, installed)
+	for _, want := range []string{"api --> cache", "api --> db"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing edge %q in output:\n%s", want, got)
+		}
+	}
+}
+
 // TestRender_EmptyModel — a model with 0 components renders a
 // placeholder comment, not malformed mermaid.
 func TestRender_EmptyModel(t *testing.T) {

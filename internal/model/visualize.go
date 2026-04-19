@@ -11,8 +11,9 @@ import (
 // Render emits the markdown+mermaid body for m. The registry is used to
 // resolve each component's type to its owning provider (bare name); the
 // installed list supplies the Namespace so the owning name can be
-// promoted to an FQN for subgraph grouping. Pure function — no file
-// I/O, no goroutines, no globals.
+// promoted to an FQN for subgraph grouping. No file I/O, no goroutines,
+// no globals — but does lazily populate m.graph via BuildGraph() when
+// nil, same pattern as EntryPoint and DependenciesOf on *Model.
 func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvider) (string, error) {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# %s — dependency graph\n\n", m.Meta.Name)
@@ -75,7 +76,7 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 			if !flat {
 				indent = "    "
 			}
-			fmt.Fprintf(&sb, "%s%s%s%q%s\n", indent, n, openBracket, label, closeBracket)
+			fmt.Fprintf(&sb, "%s%s%s%q%s\n", indent, nodeID(n), openBracket, label, closeBracket)
 		}
 		if !flat {
 			sb.WriteString("  end\n")
@@ -100,7 +101,7 @@ func Render(m *Model, reg *providersupport.Registry, installed []InstalledProvid
 		return edges[i].to < edges[j].to
 	})
 	for _, e := range edges {
-		fmt.Fprintf(&sb, "  %s --> %s\n", e.from, e.to)
+		fmt.Fprintf(&sb, "  %s --> %s\n", nodeID(e.from), nodeID(e.to))
 	}
 
 	sb.WriteString("```\n")
@@ -133,8 +134,22 @@ func resolveFQN(m *Model, reg *providersupport.Registry, installed []InstalledPr
 // fqnID turns a FQN like "mgt-tool/kubernetes" into a mermaid-safe
 // identifier "mgt_tool_kubernetes" ([a-zA-Z0-9_] only).
 func fqnID(fqn string) string {
+	return sanitizeForMermaidID(fqn)
+}
+
+// nodeID turns a component name into a mermaid-safe node id. The
+// readable name stays in the label (inside quotes); this is only for
+// the id mermaid parses — which must match [A-Za-z0-9_] reliably across
+// renderers. Component keys in real models contain `/` (SSM parameter
+// paths), `-` (k8s resource names), and `.` / `@` (FQN-style keys);
+// none of those parse as ids, so we normalize to `_`.
+func nodeID(name string) string {
+	return sanitizeForMermaidID(name)
+}
+
+func sanitizeForMermaidID(s string) string {
 	r := strings.NewReplacer("/", "_", "-", "_", "@", "_", ".", "_")
-	return r.Replace(fqn)
+	return r.Replace(s)
 }
 
 func sortedComponentNames(m *Model) []string {
