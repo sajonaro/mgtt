@@ -42,7 +42,7 @@ The engine is pure — no I/O, no credentials, no side effects. The same engine 
 | | Simulation | Troubleshooting |
 |---|---|---|
 | Command | `mgtt simulate` | `mgtt plan` |
-| Facts from | Scenario YAML (authored) | Live probes (kubectl, aws) |
+| Facts from | Scenario YAML (authored) | Live probes via installed providers |
 | Needs | Nothing | Environment credentials |
 | Runs in | CI pipeline | On-call engineer's laptop |
 | Output | Pass/fail assertions | Guided root cause |
@@ -92,6 +92,6 @@ Providers teach mgtt about technologies. Each provider defines:
 - **Failure modes** — what downstream effects each non-healthy state can cause
 - **Probes** — the actual commands to collect facts from live systems
 
-mgtt ships with official providers for Kubernetes and AWS. Community providers extend it to other technologies.
+Providers for each technology are installed separately. See the [Provider Registry](../reference/registry.md) for the current catalog — Kubernetes, AWS, Docker, Terraform, Tempo, Quickwit, and anything else the community has authored. Writing your own is a [standalone guide](../providers/overview.md).
 
 [Provider Type Catalog →](../reference/type-catalog.md) | [Writing Providers →](../providers/overview.md)

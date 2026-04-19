@@ -82,8 +82,8 @@ Each key under `components` is the component name. Names must be unique within t
 | Field | Required | Description |
 |-------|----------|-------------|
 | `type` | yes | A type defined by one of the listed providers. See [Type Catalog](type-catalog.md) for available types. |
-| `resource` | no | Upstream resource identifier. When set, the provider looks up `<resource>` instead of the component key at probe time. Lets you keep readable component keys (e.g. `rds:`) while probing the real AWS / kubectl / etc. resource (e.g. `flowers-magento-stage-rds`). Supports `{key}` placeholders that expand against `meta.vars` at load time — a model shipped across environments can use `resource: flowers-magento-{env}-rds`. Unresolved placeholders are a load-time error. |
-| `providers` | no | Override `meta.providers` for this component. Use when a component belongs to a different provider (e.g., an AWS RDS database in a Kubernetes-heavy model). |
+| `resource` | no | Upstream resource identifier. When set, the provider looks up `<resource>` instead of the component key at probe time. Lets you keep readable component keys (e.g. `rds:`) while probing the real backing resource (e.g. an RDS DB instance id, a kubectl-named Deployment, a Docker container name — whatever the owning provider expects). Supports `{key}` placeholders that expand against `meta.vars` at load time — a model shipped across environments can use `resource: flowers-magento-{env}-rds`. Unresolved placeholders are a load-time error. |
+| `providers` | no | Override `meta.providers` for this component. Use when one component belongs to a provider different from the model's default set (e.g., a single RDS instance in a model whose defaults are Kubernetes). |
 | `depends` | no | List of dependency entries. See [Dependencies](#dependencies) below. |
 | `healthy` | no | Additional health conditions beyond the provider's defaults. See [Health expressions](#health-expressions) below. |
 
