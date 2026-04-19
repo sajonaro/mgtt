@@ -24,6 +24,18 @@ type Meta struct {
 	Version   string
 	Providers []string
 	Vars      map[string]string
+	// StrictTypes, when true, forbids the generic-provider fallback
+	// during type resolution. An unknown type then becomes a validation
+	// error instead of silently resolving to generic.component. Default
+	// is false — the generic fallback is allowed and INFO-logged.
+	StrictTypes bool
+	// Scenarios carries the opt-out marker for scenarios.yaml drift
+	// checking. Spec shape: `meta.scenarios: none` on empty placeholder
+	// models signals "no scenarios expected"; the validate path then
+	// skips the drift check + skips enumeration under --write-scenarios.
+	// Any other non-empty value is reserved for future use; empty means
+	// "default behavior".
+	Scenarios string
 }
 
 // Component represents a single infrastructure component.

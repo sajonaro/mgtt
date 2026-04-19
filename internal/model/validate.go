@@ -16,11 +16,55 @@ func Validate(m *Model, reg *providersupport.Registry) *ValidationResult {
 	pass1Structural(m, result)
 	if reg != nil {
 		pass2TypeResolution(m, reg, result)
+		pass5TriggeredBy(m, reg, result)
 	}
 	pass3DepRefs(m, result)
 	pass4Cycles(m, result)
 
 	return result
+}
+
+// GenericFallback captures one component that resolved to the generic
+// provider fallback during Validate. The CLI uses these to emit per-
+// component INFO logs (strict_types: false) or hard errors
+// (strict_types: true).
+type GenericFallback struct {
+	Component string
+	Type      string
+}
+
+// CollectGenericFallbacks walks every component and returns the ones
+// whose type resolved to the built-in "generic" provider. Dedupes by
+// component so each typo shows up once, not N times.
+func CollectGenericFallbacks(m *Model, reg *providersupport.Registry) []GenericFallback {
+	if reg == nil {
+		return nil
+	}
+	var out []GenericFallback
+	seen := make(map[string]bool, len(m.Order))
+	for _, name := range m.Order {
+		comp := m.Components[name]
+		if comp == nil || comp.Type == "" {
+			continue
+		}
+		providers := comp.Providers
+		if len(providers) == 0 {
+			providers = m.Meta.Providers
+		}
+		_, providerName, err := reg.ResolveType(providers, comp.Type)
+		if err != nil {
+			continue
+		}
+		if providerName != providersupport.GenericProviderName {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, GenericFallback{Component: name, Type: comp.Type})
+	}
+	return out
 }
 
 func pass2TypeResolution(m *Model, reg *providersupport.Registry, result *ValidationResult) {
@@ -35,14 +79,95 @@ func pass2TypeResolution(m *Model, reg *providersupport.Registry, result *Valida
 		if len(providers) == 0 {
 			providers = m.Meta.Providers
 		}
-		if _, _, err := reg.ResolveType(providers, comp.Type); err != nil {
+		_, providerName, err := reg.ResolveType(providers, comp.Type)
+		if err != nil {
 			result.Errors = append(result.Errors, ValidationError{
 				Component: name,
 				Field:     "type",
 				Message:   fmt.Sprintf("type %s could not be resolved", comp.Type),
 			})
+			continue
+		}
+		// Strict opt-in: authors who set meta.strict_types: true reject
+		// the generic fallback at validate time rather than discover it
+		// silently at diagnose time.
+		if m.Meta.StrictTypes && providerName == providersupport.GenericProviderName {
+			result.Errors = append(result.Errors, ValidationError{
+				Component: name,
+				Field:     "type",
+				Message:   fmt.Sprintf("type %q has no typed provider (strict_types: true rejects the generic fallback)", comp.Type),
+			})
 		}
 	}
+}
+
+// pass5TriggeredBy warns when a state.triggered_by label isn't mentioned
+// by any failure_modes.can_cause list in the registry. Typos produce
+// states that can never fire, which is rarely intentional.
+func pass5TriggeredBy(m *Model, reg *providersupport.Registry, result *ValidationResult) {
+	producers := collectCanCauseLabels(reg, m)
+	for _, name := range m.Order {
+		comp := m.Components[name]
+		if comp == nil || comp.Type == "" {
+			continue
+		}
+		providers := comp.Providers
+		if len(providers) == 0 {
+			providers = m.Meta.Providers
+		}
+		t, _, err := reg.ResolveType(providers, comp.Type)
+		if err != nil || t == nil {
+			continue
+		}
+		seen := make(map[string]bool)
+		for _, st := range t.States {
+			for _, label := range st.TriggeredBy {
+				if producers[label] {
+					continue
+				}
+				key := comp.Type + "\x00" + st.Name + "\x00" + label
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				result.Warnings = append(result.Warnings, ValidationWarning{
+					Component: name,
+					Field:     "triggered_by",
+					Message:   fmt.Sprintf("type %q state %q: triggered_by label %q has no producer (no can_cause mentions it)", comp.Type, st.Name, label),
+				})
+			}
+		}
+	}
+}
+
+// collectCanCauseLabels builds the set of labels produced by any
+// can_cause list across the registry + the model's own failure_modes.
+func collectCanCauseLabels(reg *providersupport.Registry, m *Model) map[string]bool {
+	out := map[string]bool{}
+	if reg != nil {
+		for _, p := range reg.All() {
+			for _, t := range p.Types {
+				for _, causes := range t.FailureModes {
+					for _, label := range causes {
+						out[label] = true
+					}
+				}
+			}
+		}
+	}
+	// Model-level failure_modes (component-scoped overrides) are also
+	// producers — include them so a self-contained model doesn't warn
+	// for its own labels.
+	if m != nil {
+		for _, comp := range m.Components {
+			for _, causes := range comp.FailureModes {
+				for _, label := range causes {
+					out[label] = true
+				}
+			}
+		}
+	}
+	return out
 }
 
 func pass1Structural(m *Model, result *ValidationResult) {
