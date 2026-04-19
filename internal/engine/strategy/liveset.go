@@ -57,6 +57,17 @@ func stepConsistent(step scenarios.Step, store *facts.Store, m *model.Model, reg
 	if err != nil || t == nil {
 		return true
 	}
+	// Absent-component handling: if the probe layer reported the
+	// component doesn't exist, any scenario that requires a non-default
+	// state for it is contradicted. The default-active state (the
+	// "healthy" state) stays live — a missing component is trivially
+	// "not in any failure state".
+	if store.IsAbsent(step.Component) {
+		if t.DefaultActiveState == "" || step.State != t.DefaultActiveState {
+			return false
+		}
+		return true
+	}
 	for _, st := range t.States {
 		if st.Name != step.State {
 			continue

@@ -70,3 +70,20 @@ func (s *Store) LookupValue(component, key string) (any, bool) {
 	}
 	return f.Value, true
 }
+
+// IsAbsent reports whether any fact on component was recorded with
+// Status == not_found. The live-set filter uses this to eliminate
+// scenarios requiring a non-default state on a component that the probe
+// layer has demonstrated doesn't exist.
+func (s *Store) IsAbsent(component string) bool {
+	list, ok := s.facts[component]
+	if !ok {
+		return false
+	}
+	for _, f := range list {
+		if f.Status == FactStatusNotFound {
+			return true
+		}
+	}
+	return false
+}

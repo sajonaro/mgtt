@@ -126,6 +126,41 @@ func TestAllComponentsEmpty(t *testing.T) {
 	}
 }
 
+// TestIsAbsent_EmptyStore covers the "no facts at all" branch.
+func TestIsAbsent_Empty(t *testing.T) {
+	s := facts.NewInMemory()
+	if s.IsAbsent("api") {
+		t.Errorf("empty store: IsAbsent must be false")
+	}
+}
+
+// TestIsAbsent_NormalFactsOnly verifies that facts with the default
+// empty Status don't trigger IsAbsent.
+func TestIsAbsent_NormalFactsOnly(t *testing.T) {
+	s := facts.NewInMemory()
+	s.Append("api", facts.Fact{Key: "ready_replicas", Value: 3})
+	if s.IsAbsent("api") {
+		t.Errorf("component with only normal facts: IsAbsent must be false")
+	}
+}
+
+// TestIsAbsent_NotFoundFactFlagsComponent verifies that a single
+// not_found fact marks the whole component absent regardless of other
+// facts sitting alongside it. That's deliberate: the probe layer
+// observed "component doesn't exist", which is authoritative.
+func TestIsAbsent_NotFoundFactFlagsComponent(t *testing.T) {
+	s := facts.NewInMemory()
+	s.Append("api", facts.Fact{Key: "ready_replicas", Value: 3})
+	s.Append("api", facts.Fact{Key: "exists", Status: facts.FactStatusNotFound})
+	if !s.IsAbsent("api") {
+		t.Errorf("component with a not_found fact: IsAbsent must be true")
+	}
+	// Unrelated component still reads normal.
+	if s.IsAbsent("db") {
+		t.Errorf("unrelated component must not be flagged absent")
+	}
+}
+
 func TestAppendAndSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.state.yaml")

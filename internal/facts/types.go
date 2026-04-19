@@ -26,4 +26,25 @@ type Fact struct {
 	At        time.Time
 	Note      string
 	Raw       string
+	// Status carries the probe classification when Value is nil.
+	// The primary consumer is "not_found": a probe ran successfully
+	// but the underlying resource doesn't exist. In that case the
+	// component itself should be treated as absent — scenarios
+	// requiring a non-default state for that component are eliminated.
+	// Empty string means "normal" (Value holds the parsed result) or
+	// operator-provided facts that don't need classification.
+	Status FactStatus
 }
+
+// FactStatus classifies a non-value fact. "" (default) means the fact
+// carries a normal Value. Probe results with no Value set this to mark
+// the reason.
+type FactStatus string
+
+const (
+	// FactStatusNotFound says the probe ran successfully but the
+	// component it targets doesn't exist. The live-set filter uses
+	// this to eliminate any scenario that requires a non-default
+	// state on the absent component.
+	FactStatusNotFound FactStatus = "not_found"
+)
