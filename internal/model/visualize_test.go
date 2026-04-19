@@ -154,3 +154,31 @@ func TestRender_MultiProviderSubgraphs(t *testing.T) {
 		t.Errorf("expected 2 subgraph closers, got %d:\n%s", strings.Count(got, "\n  end\n"), got)
 	}
 }
+
+// TestRender_SingleProviderFlat — when all components resolve to the
+// same provider, no subgraph is emitted (flat layout).
+func TestRender_SingleProviderFlat(t *testing.T) {
+	m := &model.Model{
+		Meta: model.Meta{Name: "flat", Version: "1.0", Providers: []string{"k8s"}},
+		Components: map[string]*model.Component{
+			"a": {Name: "a", Type: "deployment", Depends: []model.Dependency{{On: []string{"b"}}}},
+			"b": {Name: "b", Type: "deployment"},
+		},
+		Order: []string{"a", "b"},
+	}
+	reg := providersupport.NewRegistry()
+	reg.Register(&providersupport.Provider{
+		Meta:  providersupport.ProviderMeta{Name: "k8s"},
+		Types: map[string]*providersupport.Type{"deployment": {Name: "deployment"}},
+	})
+	installed := []model.InstalledProvider{{Name: "k8s", Namespace: "mgt-tool"}}
+
+	got, _ := model.Render(m, reg, installed)
+
+	if strings.Contains(got, "subgraph ") {
+		t.Errorf("single-provider model should render flat (no subgraph); got:\n%s", got)
+	}
+	if !strings.Contains(got, "a --> b") {
+		t.Errorf("edge missing; got:\n%s", got)
+	}
+}
