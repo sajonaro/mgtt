@@ -96,9 +96,10 @@ func chdir(t *testing.T, dir string) {
 // them.
 func runValidate(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	// Reset the package-level flag between calls since cobra binds to it
-	// via BoolVar (persistent state across Execute calls).
+	// Reset the package-level flags between calls since cobra binds to
+	// them via BoolVar (persistent state across Execute calls).
 	writeScenariosFlag = false
+	checkScenariosFlag = false
 	var buf bytes.Buffer
 	cmd := RootCmd()
 	cmd.SetOut(&buf)
@@ -209,6 +210,200 @@ func TestValidate_ReturnsErrorOnValidationErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "validation") {
 		t.Errorf("expected 'validation' in error message; got %q", err.Error())
+	}
+}
+
+// TestValidate_GenericFallback_LogsInfo verifies that when a model
+// references an unknown type and strict_types is not set, validate
+// succeeds and emits an INFO log line naming the component + type.
+func TestValidate_GenericFallback_LogsInfo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+	// No provider staged — the unknown type must resolve via generic
+	// fallback.
+
+	workDir := t.TempDir()
+	modelPath := filepath.Join(workDir, "model.yaml")
+	body := "meta:\n" +
+		"  name: myapp\n" +
+		"  version: \"1.0\"\n" +
+		"components:\n" +
+		"  widget:\n" +
+		"    type: unknown_type\n"
+	if err := os.WriteFile(modelPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runValidate(t, "model", "validate", modelPath)
+	if err != nil {
+		t.Fatalf("validate must succeed under default strict_types=false; got %v\nout:\n%s", err, out)
+	}
+	if !strings.Contains(out, "INFO: component \"widget\" uses generic.component") {
+		t.Errorf("expected INFO log naming generic fallback; got:\n%s", out)
+	}
+	if !strings.Contains(out, "\"unknown_type\"") {
+		t.Errorf("INFO log must name the unresolved type; got:\n%s", out)
+	}
+}
+
+// TestValidate_StrictTypesRejectsGenericFallback verifies that
+// meta.strict_types: true flips the generic-fallback INFO into a hard
+// validation error.
+func TestValidate_StrictTypesRejectsGenericFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	workDir := t.TempDir()
+	modelPath := filepath.Join(workDir, "model.yaml")
+	body := "meta:\n" +
+		"  name: strict\n" +
+		"  version: \"1.0\"\n" +
+		"  strict_types: true\n" +
+		"components:\n" +
+		"  widget:\n" +
+		"    type: unknown_type\n"
+	if err := os.WriteFile(modelPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runValidate(t, "model", "validate", modelPath)
+	if err == nil {
+		t.Fatalf("strict_types: true must turn the fallback into an error; got nil\nout:\n%s", out)
+	}
+	if !strings.Contains(out, "strict_types") {
+		t.Errorf("error output must name strict_types; got:\n%s", out)
+	}
+}
+
+// TestValidate_ScenariosNoneSkipsDrift verifies that
+// meta.scenarios: none exempts the model from needing a scenarios.yaml
+// sidecar (and the drift check).
+func TestValidate_ScenariosNoneSkipsDrift(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+	stageTestProvider(t, home, "testprov", "svc_type")
+
+	workDir := t.TempDir()
+	modelPath := filepath.Join(workDir, "model.yaml")
+	// No scenarios.yaml is written; opted-out model should validate clean.
+	body := "meta:\n" +
+		"  name: placeholder\n" +
+		"  version: \"1.0\"\n" +
+		"  scenarios: none\n" +
+		"  providers:\n" +
+		"    - testprov\n" +
+		"components:\n" +
+		"  svc:\n" +
+		"    type: svc_type\n"
+	if err := os.WriteFile(modelPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runValidate(t, "model", "validate", modelPath)
+	if err != nil {
+		t.Fatalf("scenarios: none must skip drift; got %v\nout:\n%s", err, out)
+	}
+	// --write-scenarios should also not create a sidecar when opted out.
+	out2, err := runValidate(t, "model", "validate", modelPath, "--write-scenarios")
+	if err != nil {
+		t.Fatalf("scenarios: none + --write-scenarios must not error; got %v\nout:\n%s", err, out2)
+	}
+	if _, statErr := os.Stat(filepath.Join(workDir, "scenarios.yaml")); !os.IsNotExist(statErr) {
+		t.Errorf("scenarios: none must suppress scenarios.yaml generation; stat err=%v", statErr)
+	}
+}
+
+// TestValidate_CheckScenariosAliasDetectsDrift verifies that
+// --check-scenarios runs only the drift check (and catches stale
+// sidecars), skipping other validation passes.
+func TestValidate_CheckScenariosAliasDetectsDrift(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+	stageTestProvider(t, home, "testprov", "svc_type")
+
+	workDir := t.TempDir()
+	modelPath := writeModel(t, workDir, "myapp", "testprov", "svc_type")
+
+	// Establish scenarios.yaml.
+	if out, err := runValidate(t, "model", "validate", modelPath, "--write-scenarios"); err != nil {
+		t.Fatalf("initial write: %v\n%s", err, out)
+	}
+
+	// Mutate the model; the sidecar hash is now stale.
+	body := "meta:\n" +
+		"  name: myapp\n" +
+		"  version: \"1.2\"\n" +
+		"  providers:\n" +
+		"    - testprov\n" +
+		"components:\n" +
+		"  svc:\n" +
+		"    type: svc_type\n"
+	if err := os.WriteFile(modelPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runValidate(t, "model", "validate", modelPath, "--check-scenarios")
+	if err == nil {
+		t.Fatalf("expected drift error under --check-scenarios; got nil\nout:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "stale") {
+		t.Errorf("expected 'stale' in error; got %q", err.Error())
+	}
+}
+
+// TestValidate_TriggeredByWarnsOnUnknownLabel verifies that a
+// triggered_by label with no producer in the registry emits a WARNING
+// (not an error). The test uses CollectGenericFallbacks indirectly by
+// staging a provider with a state referencing a non-existent label.
+func TestValidate_TriggeredByWarnsOnUnknownLabel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("MGTT_HOME", home)
+
+	// Stage a provider whose state references a label no can_cause
+	// produces.
+	dir := filepath.Join(home, "providers", "tp")
+	typesDir := filepath.Join(dir, "types")
+	if err := os.MkdirAll(typesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte("meta:\n" +
+		"  name: tp\n" +
+		"  version: 0.1.0\n" +
+		"  description: test\n" +
+		"install:\n" +
+		"  source:\n" +
+		"    build: hooks/install.sh\n" +
+		"    clean: hooks/uninstall.sh\n")
+	if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	typeYAML := []byte("description: s\n" +
+		"facts:\n" +
+		"  ready:\n" +
+		"    type: mgtt.bool\n" +
+		"    probe:\n" +
+		"      cmd: echo\n" +
+		"states:\n" +
+		"  broken:\n" +
+		"    triggered_by: [nobody_produces_me]\n" +
+		"    description: broken\n" +
+		"default_active_state: broken\n")
+	if err := os.WriteFile(filepath.Join(typesDir, "svc.yaml"), typeYAML, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	workDir := t.TempDir()
+	modelPath := writeModel(t, workDir, "myapp", "tp", "svc")
+
+	out, err := runValidate(t, "model", "validate", modelPath)
+	if err != nil {
+		t.Fatalf("unknown triggered_by label must be WARNING not ERROR; got %v\nout:\n%s", err, out)
+	}
+	if !strings.Contains(out, "nobody_produces_me") {
+		t.Errorf("expected warning naming unknown label; got:\n%s", out)
+	}
+	if !strings.Contains(out, "has no producer") {
+		t.Errorf("expected 'has no producer' wording; got:\n%s", out)
 	}
 }
 

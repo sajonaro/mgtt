@@ -24,6 +24,12 @@ var modelCmd = &cobra.Command{
 // scenarios.index.yaml when no explicit path was given).
 var writeScenariosFlag bool
 
+// checkScenariosFlag controls fast-path drift-only validation: when set,
+// skip structural / type / dep-ref validation and run only the
+// scenarios.yaml drift check. Useful for CI lanes that only want to
+// catch stale sidecars.
+var checkScenariosFlag bool
+
 var modelValidateCmd = &cobra.Command{
 	Use:          "validate [path]",
 	Short:        "Validate system.model.yaml",
@@ -41,6 +47,9 @@ var modelValidateCmd = &cobra.Command{
 		path := "system.model.yaml"
 		if explicitPath {
 			path = args[0]
+		}
+		if checkScenariosFlag {
+			return runScenariosDriftOnly(cmd, path)
 		}
 		return runSingleModelValidate(cmd, path, writeScenariosFlag)
 	},
@@ -76,6 +85,18 @@ func runSingleModelValidate(cmd *cobra.Command, path string, writeScenarios bool
 
 	result := model.Validate(m, reg)
 
+	// Generic-fallback reporting. strict_types: true was already converted
+	// into validation errors in pass2TypeResolution, so this path only
+	// emits INFO-log lines (one per component) for the default
+	// strict_types: false case.
+	if !m.Meta.StrictTypes {
+		for _, gf := range model.CollectGenericFallbacks(m, reg) {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"INFO: component %q uses generic.component (no typed provider found for %q)\n",
+				gf.Component, gf.Type)
+		}
+	}
+
 	// Build depCounts: map component name → number of direct dependencies.
 	// Use -1 to signal "no deps but has a healthy override".
 	depCounts := make(map[string]int, len(m.Components))
@@ -100,32 +121,90 @@ func runSingleModelValidate(cmd *cobra.Command, path string, writeScenarios bool
 
 	// Drift detection: if scenarios.yaml exists next to the model, its
 	// stored source_hash must still match the current model + types.
-	scenariosPath := filepath.Join(filepath.Dir(path), "scenarios.yaml")
-	if _, err := os.Stat(scenariosPath); err == nil {
-		f, err := os.Open(scenariosPath)
-		if err != nil {
-			return err
-		}
-		_, committedHash, err := scenarios.Read(f)
-		f.Close()
-		if err != nil {
-			return fmt.Errorf("read %s: %w", scenariosPath, err)
-		}
-		typePaths := collectTypePaths(reg)
-		currentHash, err := scenarios.ComputeSourceHash(path, typePaths)
-		if err != nil {
-			return err
-		}
-		if committedHash != currentHash {
-			return fmt.Errorf("%s is stale: source_hash=%s but current content hashes to %s. Run `mgtt model validate --write-scenarios` and commit.", scenariosPath, committedHash, currentHash)
+	// Skipped entirely when the author opted out via meta.scenarios: none
+	// — empty placeholder models shouldn't require an (also empty)
+	// scenarios.yaml.
+	if !scenariosOptedOut(m) {
+		scenariosPath := filepath.Join(filepath.Dir(path), "scenarios.yaml")
+		if _, err := os.Stat(scenariosPath); err == nil {
+			f, err := os.Open(scenariosPath)
+			if err != nil {
+				return err
+			}
+			_, committedHash, err := scenarios.Read(f)
+			f.Close()
+			if err != nil {
+				return fmt.Errorf("read %s: %w", scenariosPath, err)
+			}
+			typePaths := collectTypePaths(reg)
+			currentHash, err := scenarios.ComputeSourceHash(path, typePaths)
+			if err != nil {
+				return err
+			}
+			if committedHash != currentHash {
+				return fmt.Errorf("%s is stale: source_hash=%s but current content hashes to %s. Run `mgtt model validate --write-scenarios` and commit.", scenariosPath, committedHash, currentHash)
+			}
 		}
 	}
 
-	if writeScenarios {
+	if writeScenarios && !scenariosOptedOut(m) {
 		if _, err := regenerateScenariosFor(cmd, m, reg, path); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+// scenariosOptedOut returns true when the model declares
+// `meta.scenarios: none` to signal "no scenarios sidecar expected"
+// (typically an empty placeholder model, or one whose failure modes
+// haven't been written yet).
+func scenariosOptedOut(m *model.Model) bool {
+	return m != nil && strings.EqualFold(m.Meta.Scenarios, "none")
+}
+
+// runScenariosDriftOnly runs ONLY the scenarios.yaml drift check against
+// the model at path. Skips structural / type / dep-ref validation. Used
+// by `--check-scenarios` in fast CI lanes that only want to catch stale
+// sidecars without paying for the full validate pass.
+func runScenariosDriftOnly(cmd *cobra.Command, path string) error {
+	m, err := model.Load(path)
+	if err != nil {
+		return err
+	}
+	reg, err := loadRegistryForUse()
+	if err != nil {
+		return err
+	}
+
+	if scenariosOptedOut(m) {
+		fmt.Fprintf(cmd.OutOrStdout(), "meta.scenarios: none — drift check skipped\n")
+		return nil
+	}
+
+	scenariosPath := filepath.Join(filepath.Dir(path), "scenarios.yaml")
+	if _, err := os.Stat(scenariosPath); err != nil {
+		fmt.Fprintf(cmd.OutOrStdout(), "no scenarios.yaml at %s — drift check skipped\n", scenariosPath)
+		return nil
+	}
+	f, err := os.Open(scenariosPath)
+	if err != nil {
+		return err
+	}
+	_, committedHash, err := scenarios.Read(f)
+	f.Close()
+	if err != nil {
+		return fmt.Errorf("read %s: %w", scenariosPath, err)
+	}
+	typePaths := collectTypePaths(reg)
+	currentHash, err := scenarios.ComputeSourceHash(path, typePaths)
+	if err != nil {
+		return err
+	}
+	if committedHash != currentHash {
+		return fmt.Errorf("%s is stale: source_hash=%s but current content hashes to %s. Run `mgtt model validate --write-scenarios` and commit.", scenariosPath, committedHash, currentHash)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "scenarios.yaml up to date (source_hash=%s)\n", currentHash)
 	return nil
 }
 
@@ -186,6 +265,10 @@ func runWorkspaceWriteScenarios(cmd *cobra.Command) error {
 		result := model.Validate(m, reg)
 		if result.HasErrors() {
 			return fmt.Errorf("%s: model has validation errors; run `mgtt model validate %s` first", mp, mp)
+		}
+		if scenariosOptedOut(m) {
+			// Opted out — don't regenerate a sidecar or index it.
+			continue
 		}
 		entry, err := regenerateScenariosFor(cmd, m, reg, mp)
 		if err != nil {
@@ -271,6 +354,8 @@ func collectTypePaths(reg *providersupport.Registry) []string {
 func init() {
 	modelValidateCmd.Flags().BoolVar(&writeScenariosFlag, "write-scenarios", false,
 		"regenerate scenarios.yaml (and scenarios.index.yaml when no explicit model path is given) at the model's directory")
+	modelValidateCmd.Flags().BoolVar(&checkScenariosFlag, "check-scenarios", false,
+		"run only the scenarios.yaml drift check; skip structural / type / dep-ref validation")
 	modelCmd.AddCommand(modelValidateCmd)
 	rootCmd.AddCommand(modelCmd)
 }
@@ -325,6 +410,17 @@ func renderModelValidate(w io.Writer, result *model.ValidationResult, components
 	// Print global errors (cycles etc.) — not tied to a component.
 	for _, e := range globalErrors {
 		fmt.Fprintf(w, "  %s %s\n", checkmark(false), e.Message)
+	}
+
+	// Print warnings after errors so they don't drown the signal out.
+	// Warnings are advisory (e.g. a triggered_by label with no producer)
+	// and must not fail the validate run.
+	for _, wn := range result.Warnings {
+		if wn.Component != "" {
+			fmt.Fprintf(w, "  ! %s  %s\n", wn.Component, wn.Message)
+		} else {
+			fmt.Fprintf(w, "  ! %s\n", wn.Message)
+		}
 	}
 
 	// Blank line before summary.

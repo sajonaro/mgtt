@@ -17,10 +17,12 @@ type rawModel struct {
 }
 
 type rawMeta struct {
-	Name      string            `yaml:"name"`
-	Version   string            `yaml:"version"`
-	Providers []string          `yaml:"providers"`
-	Vars      map[string]string `yaml:"vars"`
+	Name        string            `yaml:"name"`
+	Version     string            `yaml:"version"`
+	Providers   []string          `yaml:"providers"`
+	Vars        map[string]string `yaml:"vars"`
+	StrictTypes bool              `yaml:"strict_types"`
+	Scenarios   string            `yaml:"scenarios"`
 }
 
 // rawComponent mirrors the YAML component block.
@@ -75,10 +77,12 @@ func Load(path string) (*Model, error) {
 	// Build the typed Model.
 	m := &Model{
 		Meta: Meta{
-			Name:      raw.Meta.Name,
-			Version:   raw.Meta.Version,
-			Providers: raw.Meta.Providers,
-			Vars:      raw.Meta.Vars,
+			Name:        raw.Meta.Name,
+			Version:     raw.Meta.Version,
+			Providers:   raw.Meta.Providers,
+			Vars:        raw.Meta.Vars,
+			StrictTypes: raw.Meta.StrictTypes,
+			Scenarios:   raw.Meta.Scenarios,
 		},
 		Components: make(map[string]*Component, len(raw.Components)),
 		Order:      order,
