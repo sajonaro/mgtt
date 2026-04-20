@@ -91,16 +91,13 @@ One model, two moments:
 - [Simulation walkthrough](concepts/simulation.md) — design-time model validation
 - [Troubleshooting walkthrough](concepts/troubleshooting.md) — runtime incident response
 
-## Working with Providers
+## Using Providers
 
-- [Using Providers](concepts/using-providers.md) — how mgtt invokes providers at probe time
+- [Overview](concepts/using-providers.md) — how mgtt invokes providers at probe time
 - [Install Methods](concepts/provider-install-methods.md) — git build vs. pre-built Docker image
 - [Names and Versions](concepts/provider-fqn-and-versions.md) — FQN + version constraint resolution
-- [Provider Capabilities](reference/image-capabilities.md) — `needs:` vocabulary and operator overrides
-
-## Provider Registry
-
-- [Official and community providers](reference/registry.md) — browse what's available, copy the install line
+- [Image Capabilities](reference/image-capabilities.md) — `needs:` vocabulary and operator overrides
+- [Registry](reference/registry.md) — browse official + community providers, copy the install line
 
 ## Reference
 

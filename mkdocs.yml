@@ -48,12 +48,12 @@ nav:
     - Simulation: concepts/simulation.md
     - Troubleshooting: concepts/troubleshooting.md
     - Multi-File Models: concepts/multi-file-models.md
-  - Working with Providers:
-    - Using Providers: concepts/using-providers.md
+  - Using Providers:
+    - Overview: concepts/using-providers.md
     - Install Methods: concepts/provider-install-methods.md
     - Names and Versions: concepts/provider-fqn-and-versions.md
-    - Capabilities: reference/image-capabilities.md
-  - Provider Registry: reference/registry.md
+    - Image Capabilities: reference/image-capabilities.md
+    - Registry (browse): reference/registry.md
   - Writing Providers:
     - Overview: providers/overview.md
     - Vocabulary: providers/vocabulary.md
