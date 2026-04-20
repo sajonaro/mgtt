@@ -10,31 +10,9 @@ And before the system even exists, you can simulate failures against the model t
 
 ## See it in action
 
-### Simulation: reason about failures without running the system
+### Troubleshooting at 3am: root cause in 6 probes (`mgtt plan`)
 
-`mgtt simulate` takes a set of hand-authored failure scenarios (`"if rds goes down and api crash-loops, root cause is rds"`) and asserts the engine concludes the same thing. No live system, no credentials — runs anywhere Go runs.
-
-What you get once it's wired into CI:
-
-- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. Simulate on every PR and a failing scenario tells you *before* the model is needed at 3am.
-- **Architecture unit tests** — each scenario is a tiny declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
-- **Design-time validation** — write the model before the system exists, reason about whose-depends-on-whom, find the holes before you build them. The engine treats your design as executable logic.
-- **Regression harness** — the next time a real incident happens, encode it as a scenario. The engine must now identify that chain forever. Your incident postmortems become tests.
-
-```
-$ mgtt simulate --all
-
-  rds unavailable                          ✓ passed
-  api crash-loop independent of rds        ✓ passed
-  frontend crash-looping, api healthy      ✓ passed
-  all components healthy                   ✓ passed
-
-  4/4 scenarios passed
-```
-
-### Troubleshooting: root cause in 6 probes
-
-Monday 3am. Alert fires. You run `mgtt plan` and press Y:
+This is mgtt's reason for being. Alert fires. You run `mgtt plan` and press Y:
 
 ```
 $ mgtt plan
@@ -49,11 +27,11 @@ $ mgtt plan
   Eliminated: frontend, rds
 ```
 
-4 components probed, 2 eliminated, root cause found. You didn't need to know the system — the model knew it for you.
+4 components probed, 2 eliminated, root cause found. The engine ranked probes by information value, so every call moved the answer forward. You didn't need to know the system — the model knew it for you.
 
-### Autopilot: hand the loop to `mgtt diagnose`
+### Autopilot: hand the loop over (`mgtt diagnose`)
 
-Same engine, no prompts. Point it at the model and give it a budget:
+Same engine, no prompts. Point it at a probe budget and a deadline:
 
 ```
 $ mgtt diagnose --suspect api --max-probes 10
@@ -68,7 +46,29 @@ $ mgtt diagnose --suspect api --max-probes 10
   Probes run: 4/10
 ```
 
-Ideal for AI agents or unattended dry-runs. Scenarios are pre-enumerated offline into a committed `scenarios.yaml`, so diagnose can eliminate whole branches before running a probe.
+Ideal for scheduled GitLab/GitHub Actions runs, Slack bots, LLM agents, and anywhere you want unattended root-cause analysis. Structured output is easy to parse; partial visibility (RBAC refusals, transient throttles) surfaces as a visible flag in the report rather than an abort.
+
+### Simulation in CI: catch model drift before it matters (`mgtt simulate`)
+
+Before the system is even running, `mgtt simulate` verifies the model's reasoning with hand-authored scenarios (`"if rds goes down and api crash-loops, root cause is rds"`). Wire it into every PR:
+
+- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. A failing scenario tells you *before* the model is needed at 3am.
+- **Architecture unit tests** — each scenario is a tiny declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
+- **Design-time validation** — write the model before the system exists; reason about dependency holes before building them.
+- **Regression harness** — encode real incidents as scenarios. The engine must now identify that chain forever. Your postmortems become tests.
+
+```
+$ mgtt simulate --all
+
+  rds unavailable                          ✓ passed
+  api crash-loop independent of rds        ✓ passed
+  frontend crash-looping, api healthy      ✓ passed
+  all components healthy                   ✓ passed
+
+  4/4 scenarios passed
+```
+
+No running system, no credentials. Runs anywhere Go runs.
 
 ---
 

@@ -40,33 +40,9 @@ Press Y at each step yourself, or let an AI agent drive the same loop autonomous
 
 ## See it in action
 
-### Simulation: reason about failures without running the system
+### Troubleshooting at 3am: root cause in 6 probes (`mgtt plan`)
 
-Write a scenario — a tiny YAML assertion like *"if rds goes down and api crash-loops, the engine should blame rds, not api"* — and `mgtt simulate` checks that the engine concludes the same thing. No live system, no credentials, no cluster access. Runs anywhere Go runs.
-
-What you get once it's wired into CI:
-
-- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. Simulate on every PR and a failing scenario tells you *before* the model is needed at 3am.
-- **Architecture unit tests** — each scenario is a declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
-- **Design-time validation** — write the model before the system exists, reason about whose-depends-on-whom, find the holes before you build them. The engine treats your design as executable logic.
-- **Regression harness** — the next time a real incident happens, encode it as a scenario. The engine must now identify that chain forever. Your postmortems become tests.
-
-```
-$ mgtt simulate --all
-
-  rds unavailable                          ✓ passed
-  api crash-loop independent of rds        ✓ passed
-  frontend crash-looping, api healthy      ✓ passed
-  all components healthy                   ✓ passed
-
-  4/4 scenarios passed
-```
-
-[Full simulation walkthrough](concepts/simulation.md)
-
-### Troubleshooting: root cause in 6 probes
-
-Monday 3am. Alert fires. You run `mgtt plan` and press Y:
+This is mgtt's reason for being. Alert fires. You run `mgtt plan` and press Y:
 
 ```
 $ mgtt plan
@@ -97,13 +73,13 @@ $ mgtt plan
   Eliminated: frontend, rds
 ```
 
-> **4 components probed. 2 eliminated. Root cause found.** You didn't need to know the system — the model knew it for you. An AI agent could run the same loop autonomously.
+> **4 components probed. 2 eliminated. Root cause found.** The engine ranked probes by information value, so every call moved the answer forward. You didn't need to know the system — the model knew it for you.
 
 [Full troubleshooting walkthrough](concepts/troubleshooting.md)
 
-### Autopilot: `mgtt diagnose`
+### Autopilot: hand the loop over (`mgtt diagnose`)
 
-Same engine, no prompts. Hand it a probe budget and get a final report:
+Same engine, no prompts. Hand it a probe budget and a deadline; get a structured final report:
 
 ```
 $ mgtt diagnose --suspect api --max-probes 10
@@ -118,9 +94,33 @@ $ mgtt diagnose --suspect api --max-probes 10
   Probes run: 4/10
 ```
 
-Failure chains are pre-enumerated into a committed `scenarios.yaml` at design time, so diagnose eliminates whole branches before running a probe.
+Ideal for scheduled GitLab/GitHub Actions runs, Slack bots, LLM agents, and anywhere you want unattended root-cause analysis. Failure chains are pre-enumerated into a committed `scenarios.yaml` at design time, so diagnose eliminates whole branches before running a probe. Partial visibility (RBAC refusals, transient throttles) surfaces as a visible flag in the report rather than an abort.
 
 [`mgtt diagnose` reference](concepts/troubleshooting.md#autopilot-mode-mgtt-diagnose) | [scenarios.yaml](reference/scenarios-yaml.md)
+
+### Simulation in CI: catch model drift before it matters (`mgtt simulate`)
+
+Before the system is even running, `mgtt simulate` verifies the model's reasoning with hand-authored scenarios — a tiny YAML assertion like *"if rds goes down and api crash-loops, the engine should blame rds, not api"* — and asserts the engine concludes the same thing. No live system, no credentials, no cluster access. Runs anywhere Go runs.
+
+Wire it into every PR for:
+
+- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. A failing scenario tells you *before* the model is needed at 3am.
+- **Architecture unit tests** — each scenario is a declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
+- **Design-time validation** — write the model before the system exists; reason about dependency holes before building them. The engine treats your design as executable logic.
+- **Regression harness** — the next time a real incident happens, encode it as a scenario. The engine must now identify that chain forever. Your postmortems become tests.
+
+```
+$ mgtt simulate --all
+
+  rds unavailable                          ✓ passed
+  api crash-loop independent of rds        ✓ passed
+  frontend crash-looping, api healthy      ✓ passed
+  all components healthy                   ✓ passed
+
+  4/4 scenarios passed
+```
+
+[Full simulation walkthrough](concepts/simulation.md)
 
 ---
 
