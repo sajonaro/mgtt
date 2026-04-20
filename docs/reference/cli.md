@@ -12,6 +12,47 @@ mgtt model validate [path]             Structural + type + dep-ref checks; drift
   --check-scenarios                    Run only the scenarios.yaml drift check (fast CI lane)
 ```
 
+### `mgtt model build`
+
+Generates `system.model.yaml` from installed providers' discovery output. Commit the result alongside your Helm charts / Terraform.
+
+```bash
+mgtt model build
+mgtt model build --allow-deletes
+mgtt model build --tombstone=legacy-api,air-gapped-db
+mgtt model build --output custom-path.yaml
+```
+
+**Flags**
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--mgtt-home` | `$MGTT_HOME` / `~/.mgtt` | Where to look for installed providers |
+| `--output` | `system.model.yaml` | Destination file |
+| `--allow-deletes` | `false` | Accept removal of components no longer returned by discovery |
+| `--tombstone` | `[]` | Components that can be silently removed (partial-discovery cases) |
+
+**Safety**
+
+By default, if the build would remove components from the existing committed model, the command refuses and prints the removal set. This protects against partial-discovery failures (kubectl timeout, IAM expiry mid-enumeration) silently nuking half the model.
+
+```
+$ mgtt model build
+  kubernetes provider    → 11 components, 7 dependencies
+
+Model drift detected (vs committed system.model.yaml):
+  -  legacy-api
+  -  old-rds
+
+Refusing to remove components without explicit consent. Options:
+  mgtt model build --allow-deletes
+  mgtt model build --tombstone=legacy-api,old-rds
+```
+
+**Determinism**
+
+`mgtt model build` run twice against the same infrastructure produces byte-identical YAML. Sorted keys, sorted dependency lists, no timestamps. A `git diff` after a no-op run prints zero bytes.
+
 ## Providers
 
 ```

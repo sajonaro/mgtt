@@ -45,6 +45,7 @@ nav:
     - Install: getting-started/install.md
   - Concepts:
     - How It Works: concepts/how-it-works.md
+    - Model Authoring: concepts/model-authoring.md
     - Simulation: concepts/simulation.md
     - Troubleshooting: concepts/troubleshooting.md
     - Multi-File Models: concepts/multi-file-models.md
