@@ -63,45 +63,75 @@ func extractConclusion(tree *engine.PathTree) Expectation {
 	return ex
 }
 
-// matches compares expected vs actual expectations. It is order-insensitive
-// for the Eliminated list.
+// matches compares expected vs actual expectations.
+//
+// Semantics by field:
+//
+//   RootCause   strict equality (required)
+//   Path        ordered subsequence — every element of expected.Path
+//               must appear in actual.Path in the given order; extras
+//               between them are allowed. A scenario that asserts
+//               [nginx, api, rds] still passes if actual is
+//               [nginx, api, legacy-gateway, rds] because the model
+//               grew a middle hop. Omitted = not asserted.
+//   Eliminated  subset — every element of expected.Eliminated must be
+//               in actual.Eliminated; actual may contain more. Adding
+//               a topology-only component to the model doesn't
+//               cascade-break every scenario's eliminated set.
+//
+// This matcher used to be strict equality on both Path and Eliminated,
+// which made scenarios brittle to any topology change — a new
+// component, a split service, an extra intermediate hop from a
+// catalog source — whether the logical root cause changed or not. The
+// relaxation asserts that the expected shape is PRESENT in the actual
+// result, not that the actual result contains NOTHING else. Every
+// scenario that passed under the strict matcher still passes here.
 func matches(expected, actual Expectation) bool {
-	// Root cause
-	expRC := expected.RootCause
-	actRC := actual.RootCause
-	if expRC != actRC {
+	if expected.RootCause != actual.RootCause {
 		return false
 	}
+	if !isOrderedSubsequence(expected.Path, actual.Path) {
+		return false
+	}
+	if !isSubset(expected.Eliminated, actual.Eliminated) {
+		return false
+	}
+	return true
+}
 
-	// Path (order-sensitive)
-	if len(expected.Path) > 0 {
-		if len(expected.Path) != len(actual.Path) {
-			return false
-		}
-		for i := range expected.Path {
-			if expected.Path[i] != actual.Path[i] {
-				return false
+// isOrderedSubsequence reports whether every element of sub appears in
+// seq in the given order (not necessarily contiguously). Empty sub is
+// a subsequence of any seq ("no assertion" semantics).
+func isOrderedSubsequence(sub, seq []string) bool {
+	if len(sub) == 0 {
+		return true
+	}
+	i := 0
+	for _, s := range seq {
+		if s == sub[i] {
+			i++
+			if i == len(sub) {
+				return true
 			}
 		}
 	}
+	return false
+}
 
-	// Eliminated (order-insensitive)
-	if len(expected.Eliminated) != len(actual.Eliminated) {
-		return false
+// isSubset reports whether every element of sub is present in super.
+// Empty sub is a subset of any super ("no assertion" semantics).
+func isSubset(sub, super []string) bool {
+	if len(sub) == 0 {
+		return true
 	}
-	expSorted := make([]string, len(expected.Eliminated))
-	copy(expSorted, expected.Eliminated)
-	sort.Strings(expSorted)
-
-	actSorted := make([]string, len(actual.Eliminated))
-	copy(actSorted, actual.Eliminated)
-	sort.Strings(actSorted)
-
-	for i := range expSorted {
-		if expSorted[i] != actSorted[i] {
+	have := make(map[string]struct{}, len(super))
+	for _, s := range super {
+		have[s] = struct{}{}
+	}
+	for _, s := range sub {
+		if _, ok := have[s]; !ok {
 			return false
 		}
 	}
-
 	return true
 }

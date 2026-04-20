@@ -93,9 +93,9 @@ inject:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `root_cause` | yes | The component the engine identifies as root cause. Use `none` when all components are healthy. |
-| `path` | no | The failure path from outermost component to root cause. Order: `[outermost, ..., root_cause]`. |
-| `eliminated` | no | Components confirmed healthy and removed from investigation. |
+| `root_cause` | yes | The component the engine identifies as root cause. Use `none` when all components are healthy. Asserted with strict equality. |
+| `path` | no | The failure path from outermost component to root cause. Order: `[outermost, ..., root_cause]`. Asserted as an **ordered subsequence** (see below). |
+| `eliminated` | no | Components confirmed healthy and removed from investigation. Asserted as a **subset** (see below). |
 
 ```yaml
 expect:
@@ -112,10 +112,47 @@ expect:
   eliminated: [nginx, frontend, api, rds]
 ```
 
-!!! note "How `eliminated` works"
-    **Order doesn't matter.** The `eliminated` comparison is order-insensitive — `[frontend, rds]` and `[rds, frontend]` are equivalent. Write them in whatever order makes sense to you.
+### How the matcher works
 
-    **Only traversed components appear.** The engine only reports components on branches it actually explored. If your model has a component that isn't reachable from the failure path (e.g., a cron job with no dependency relationship to the affected components), it won't appear in `eliminated` even if it's healthy. Only components the engine investigated and confirmed healthy are listed.
+**`path` is an ordered subsequence.** Every component listed in `expected.path` must appear in the actual failure path *in the given order*. Extras between them are allowed.
+
+```yaml
+# scenario asserts:
+expected.path: [nginx, api, rds]
+
+# all of these pass:
+actual: [nginx, api, rds]
+actual: [nginx, api, legacy-gateway, rds]   # catalog source added a hop
+actual: [edge-cf, nginx, api, rds]          # longer prefix
+
+# these fail:
+actual: [nginx, rds]                        # api missing
+actual: [nginx, rds, api]                   # order wrong
+```
+
+You assert the *shape* of the chain, not its exact length. That makes scenarios durable under dependency-graph evolution: adding an intermediate component doesn't cascade-break scenarios whose real intent was "the chain runs through api on its way to rds".
+
+**`eliminated` is a subset.** Every component listed must be in the actual eliminated set. The actual set may contain more.
+
+```yaml
+# scenario asserts:
+expected.eliminated: [frontend, redis]
+
+# passes — actual has extras:
+actual.eliminated: [frontend, redis, payment-gateway, observability-collector]
+
+# fails — missing an asserted component:
+actual.eliminated: [frontend]
+```
+
+Order is ignored (set semantics). Adding a new topology-only component to the model doesn't invalidate every scenario's `eliminated:` list — it just means more things get eliminated, which is exactly what you'd expect.
+
+### Why the relaxed semantics
+
+Earlier mgtt versions asserted both `path` and `eliminated` with strict equality. Any model change — a new component, a split service, an extra intermediate hop from a catalog source — cascade-broke every scenario whether the logical root cause changed or not. The relaxed matcher asserts that the expected shape is *present* in the actual result, not that actual contains *nothing else*. Scenarios stay load-bearing (missing assertions still fail loudly) while becoming durable under the kind of topology evolution that doesn't actually change what "healthy" means.
+
+!!! note "Over-specified scenarios are fine"
+    Every scenario that passed under strict equality still passes under the relaxed matcher. If your scenarios enumerate every component in `eliminated:` today, they'll keep passing tomorrow — you just don't have to keep the list exhaustive when the model grows.
 
 ---
 

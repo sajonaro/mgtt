@@ -45,3 +45,5 @@ docs/superpowers/
 .log
 docs/_hooks/__pycache__/
 .cache/
+
+temp.md
