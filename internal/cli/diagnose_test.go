@@ -596,6 +596,86 @@ func (c capturingExecutor) Run(_ context.Context, cmd probe.Command) (probe.Resu
 	return c.result, nil
 }
 
+// stubExecutor returns a preconfigured error (and/or result) for every
+// Run call. Used to exercise the runner's error-handling branches
+// without a real provider binary.
+type stubExecutor struct {
+	err    error
+	result probe.Result
+}
+
+func (s stubExecutor) Run(_ context.Context, _ probe.Command) (probe.Result, error) {
+	return s.result, s.err
+}
+
+// Forbidden errors from the provider runner must be recorded as an
+// unresolved fact (Status=Forbidden, Value=nil) and returned as a
+// soft "<forbidden>" outcome — not propagated up the diagnose loop
+// as a hard error. Regression-locks the mgtt-core fix for CI-role
+// RBAC holes that used to abort the whole diagnose run.
+func TestShellProbeRunner_ForbiddenIsUnresolvedNotFatal(t *testing.T) {
+	runner := &shellProbeRunner{
+		exec: stubExecutor{err: fmt.Errorf("%w: customresourcedefinitions is forbidden", probe.ErrForbidden)},
+		reg:  providersupport.NewRegistry(),
+	}
+	store := facts.NewInMemory()
+	p := &strategy.Probe{Component: "eso", Fact: "crd_registered", ParseMode: "bool"}
+
+	out, err := runner.Run(context.Background(), p, store)
+	if err != nil {
+		t.Fatalf("runner.Run must not propagate ErrForbidden; got %v", err)
+	}
+	if !strings.Contains(out, "<forbidden>") {
+		t.Errorf("outcome should mark forbidden explicitly; got %q", out)
+	}
+	f := store.Latest("eso", "crd_registered")
+	if f == nil {
+		t.Fatal("forbidden probe must still append a fact (unresolved marker) so the strategy doesn't re-probe it")
+	}
+	if f.Status != facts.FactStatusForbidden {
+		t.Errorf("Status = %q, want FactStatusForbidden", f.Status)
+	}
+	if f.Value != nil {
+		t.Errorf("Value must be nil so the expr layer treats this as UnresolvedError; got %v", f.Value)
+	}
+}
+
+// Transient errors (throttling, timeout) follow the same soft-fail
+// path as forbidden.
+func TestShellProbeRunner_TransientIsUnresolvedNotFatal(t *testing.T) {
+	runner := &shellProbeRunner{
+		exec: stubExecutor{err: fmt.Errorf("%w: throttled", probe.ErrTransient)},
+		reg:  providersupport.NewRegistry(),
+	}
+	store := facts.NewInMemory()
+	p := &strategy.Probe{Component: "rds", Fact: "available", ParseMode: "bool"}
+
+	_, err := runner.Run(context.Background(), p, store)
+	if err != nil {
+		t.Fatalf("runner.Run must not propagate ErrTransient; got %v", err)
+	}
+	if f := store.Latest("rds", "available"); f == nil || f.Status != facts.FactStatusTransient {
+		t.Errorf("Status = %v, want FactStatusTransient (regression: transient should be soft)", f)
+	}
+}
+
+// Usage errors (and other non-recoverable categories) must still
+// propagate — they indicate a bug or misconfiguration the operator
+// needs to see, not a partial-visibility case.
+func TestShellProbeRunner_UsageErrorStillFatal(t *testing.T) {
+	runner := &shellProbeRunner{
+		exec: stubExecutor{err: fmt.Errorf("%w: missing --type", probe.ErrUsage)},
+		reg:  providersupport.NewRegistry(),
+	}
+	store := facts.NewInMemory()
+	p := &strategy.Probe{Component: "x", Fact: "y", ParseMode: "bool"}
+
+	_, err := runner.Run(context.Background(), p, store)
+	if err == nil {
+		t.Fatal("Usage errors must propagate so the caller aborts — partial visibility would hide a real bug")
+	}
+}
+
 func TestDiagnose_ParseSuspectHints(t *testing.T) {
 	got := parseSuspectHints([]string{"api", "db.down", "", "  "})
 	if len(got) != 2 {

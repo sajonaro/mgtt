@@ -105,6 +105,27 @@ Upstream selection: among unhealthy components, those whose direct deps are all 
 | **BFS** | none | `Done` or `Probe`; no root cause from chain walk alone | `scenarios: none` or scenarios list empty |
 | **Standalone check** | fact store + component healthy rules | `Done(root)` when upstream unhealth with no explaining chain | after BFS coverage exhausted |
 
+## Recoverable probe errors
+
+Not every failed probe is fatal. The engine distinguishes error *classes* so that a single RBAC hole or transient throttle doesn't force the operator to re-run the whole session.
+
+| Error class | Meaning | Engine behaviour |
+|---|---|---|
+| `provider: not_found` | Probe ran; the target resource does not exist. | Fact stored with `Status=not_found`. Any scenario requiring a non-default state for that component is contradicted. Engine continues. |
+| `provider: forbidden` | Probe ran; IAM / RBAC refused read. | Fact stored with `Status=forbidden`, `Value=nil`. Expression layer treats as `UnresolvedError` (unknown, not false). Engine continues. Report adds a "Partial visibility" line counting these. |
+| `provider: transient` | Throttled / timed out / temporary upstream outage. | Same as forbidden — unknown, report flags. |
+| `provider: usage` / `env` / `protocol` / `unknown` | Bug or misconfiguration. | Hard fail. Diagnose loop aborts with an error. |
+
+The "unknown, not false" distinction matters: a forbidden probe must never silently flip a component's state to its failed branch, or the engine would rewrite a chain based on an RBAC hole. Instead the fact stays unresolved and the engine either picks a different probe, or — if nothing else distinguishes the live set — terminates with the partial-visibility warning prominently displayed.
+
+```
+Root cause: rds
+Scenario:   rds.stopped → app.crash_looping
+Probes run: 42/100   Time: 1m10s/3m0s
+Partial visibility: 2 forbidden (RBAC / IAM refused) — result may be incomplete.
+Trail: …
+```
+
 ## Decision outcomes
 
 Every `SuggestProbe()` returns one of:

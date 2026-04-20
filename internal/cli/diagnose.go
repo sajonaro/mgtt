@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -487,6 +488,35 @@ func (r *shellProbeRunner) Run(ctx context.Context, p *strategy.Probe, store *fa
 		Timeout:   probeTimeout(),
 	})
 	if err != nil {
+		// Forbidden and Transient errors degrade to "unknown fact"
+		// rather than terminating the whole diagnose run. The probe
+		// is recorded with a non-default Status so the expression
+		// layer treats it as Unresolved (same semantics as a missing
+		// fact) and the engine keeps going. Usage/Env/Protocol/
+		// Unknown errors still propagate — those indicate a bug or
+		// misconfiguration the operator needs to fix.
+		if errors.Is(err, probe.ErrForbidden) {
+			store.Append(p.Component, facts.Fact{
+				Key:       p.Fact,
+				Value:     nil,
+				Collector: "probe",
+				At:        time.Now(),
+				Note:      "forbidden: " + err.Error(),
+				Status:    facts.FactStatusForbidden,
+			})
+			return fmt.Sprintf("%s.%s = <forbidden>", p.Component, p.Fact), nil
+		}
+		if errors.Is(err, probe.ErrTransient) {
+			store.Append(p.Component, facts.Fact{
+				Key:       p.Fact,
+				Value:     nil,
+				Collector: "probe",
+				At:        time.Now(),
+				Note:      "transient: " + err.Error(),
+				Status:    facts.FactStatusTransient,
+			})
+			return fmt.Sprintf("%s.%s = <transient>", p.Component, p.Fact), nil
+		}
 		return "", err
 	}
 	if result.Status == probe.StatusNotFound {
@@ -517,12 +547,14 @@ func reportDone(cmd *cobra.Command, m *model.Model, root *scenarios.Scenario, tr
 	if root == nil {
 		fmt.Fprintln(w, "Root cause: (none — all components healthy)")
 		writeBudget(w, probesRun, maxProbes, start, deadline)
+		writePartialVisibility(w, trail)
 		writeTrail(w, trail)
 		return
 	}
 	fmt.Fprintf(w, "Root cause: %s\n", formatComponentLabel(m, root.Root.Component))
 	fmt.Fprintf(w, "Scenario:   %s\n", renderChain(*root))
 	writeBudget(w, probesRun, maxProbes, start, deadline)
+	writePartialVisibility(w, trail)
 	if hint := suspectReport(suspects, root); hint != "" {
 		fmt.Fprintf(w, "Hint:       %s\n", hint)
 	}
@@ -550,6 +582,7 @@ func reportStuck(cmd *cobra.Command, store *facts.Store, trail []probeRecord, pr
 	}
 	fmt.Fprintln(w)
 	writeBudget(w, probesRun, maxProbes, start, deadline)
+	writePartialVisibility(w, trail)
 	writeTrail(w, trail)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Hint: if this incident resolves, run `mgtt incident end --suggest-scenarios`")
@@ -562,12 +595,41 @@ func reportPartial(cmd *cobra.Command, trail []probeRecord, reason string, probe
 	w := cmd.OutOrStdout()
 	fmt.Fprintf(w, "Stopped: %s\n", reason)
 	writeBudget(w, probesRun, maxProbes, start, deadline)
+	writePartialVisibility(w, trail)
 	writeTrail(w, trail)
 }
 
 func writeBudget(w io.Writer, probesRun, maxProbes int, start time.Time, deadline time.Duration) {
 	elapsed := time.Since(start).Round(time.Second)
 	fmt.Fprintf(w, "Probes run: %d/%d   Time: %s/%s\n", probesRun, maxProbes, elapsed, deadline)
+}
+
+// writePartialVisibility surfaces how many probes returned a recoverable
+// error (forbidden / transient) rather than a value. Those facts are
+// degraded to unresolved and the engine continues, but the operator
+// must know the conclusion was drawn under partial visibility — the
+// real root cause may sit behind one of the forbidden probes.
+func writePartialVisibility(w io.Writer, trail []probeRecord) {
+	var forbidden, transient int
+	for _, r := range trail {
+		if strings.Contains(r.outcome, "<forbidden>") {
+			forbidden++
+		}
+		if strings.Contains(r.outcome, "<transient>") {
+			transient++
+		}
+	}
+	if forbidden == 0 && transient == 0 {
+		return
+	}
+	parts := make([]string, 0, 2)
+	if forbidden > 0 {
+		parts = append(parts, fmt.Sprintf("%d forbidden (RBAC / IAM refused)", forbidden))
+	}
+	if transient > 0 {
+		parts = append(parts, fmt.Sprintf("%d transient (throttled / timed out)", transient))
+	}
+	fmt.Fprintf(w, "Partial visibility: %s — result may be incomplete.\n", strings.Join(parts, ", "))
 }
 
 func writeTrail(w io.Writer, trail []probeRecord) {

@@ -47,4 +47,16 @@ const (
 	// this to eliminate any scenario that requires a non-default
 	// state on the absent component.
 	FactStatusNotFound FactStatus = "not_found"
+
+	// FactStatusForbidden says the probe ran but the provider was
+	// refused permission to read the underlying resource (e.g. RBAC
+	// denied, IAM denied). The value is genuinely unknown — callers
+	// must treat this the same as "missing fact", NOT as "false" or
+	// "not_found", so an RBAC hole doesn't silently rewrite a chain.
+	FactStatusForbidden FactStatus = "forbidden"
+
+	// FactStatusTransient says the probe failed with a retryable
+	// error (throttling, timeout, temporary upstream outage). Same
+	// semantics as forbidden for the engine: unknown, not false.
+	FactStatusTransient FactStatus = "transient"
 )
