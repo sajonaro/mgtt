@@ -48,7 +48,10 @@ func TestDiscoverAll_HappyPath(t *testing.T) {
 	installStubProvider(t, home, "kubernetes", `{"components":[{"name":"api","type":"deployment"}]}`)
 	installStubProvider(t, home, "aws", `{"components":[{"name":"rds","type":"rds_instance"}]}`)
 
-	results, failures := DiscoverAll(context.Background(), home)
+	results, failures, homeErr := DiscoverAll(context.Background(), home)
+	if homeErr != nil {
+		t.Fatalf("unexpected home err: %v", homeErr)
+	}
 	if len(failures) != 0 {
 		t.Errorf("unexpected failures: %v", failures)
 	}
@@ -68,7 +71,10 @@ func TestDiscoverAll_SkipsNonDiscoverable(t *testing.T) {
 	installStubProvider(t, home, "kubernetes", `{"components":[{"name":"api","type":"deployment"}]}`)
 	installNonDiscoverableProvider(t, home, "legacy")
 
-	results, failures := DiscoverAll(context.Background(), home)
+	results, failures, homeErr := DiscoverAll(context.Background(), home)
+	if homeErr != nil {
+		t.Fatalf("unexpected home err: %v", homeErr)
+	}
 	if _, ok := results["kubernetes"]; !ok {
 		t.Error("kubernetes should be in results")
 	}
@@ -82,8 +88,34 @@ func TestDiscoverAll_SkipsNonDiscoverable(t *testing.T) {
 
 func TestDiscoverAll_EmptyHome(t *testing.T) {
 	home := t.TempDir()
-	results, failures := DiscoverAll(context.Background(), home)
+	results, failures, homeErr := DiscoverAll(context.Background(), home)
+	if homeErr != nil {
+		t.Fatalf("unexpected home err: %v", homeErr)
+	}
 	if len(results) != 0 || len(failures) != 0 {
 		t.Errorf("want empty results and failures; got %v / %v", results, failures)
+	}
+}
+
+// A failure in the middle of iteration must not short-circuit —
+// later providers must still be discovered.
+func TestDiscoverAll_PartialFailureDoesNotShortCircuit(t *testing.T) {
+	home := t.TempDir()
+	installStubProvider(t, home, "aws", `{"components":[{"name":"rds","type":"rds_instance"}]}`)
+	installNonDiscoverableProvider(t, home, "broken")
+	installStubProvider(t, home, "kubernetes", `{"components":[{"name":"api","type":"deployment"}]}`)
+
+	results, failures, homeErr := DiscoverAll(context.Background(), home)
+	if homeErr != nil {
+		t.Fatalf("unexpected home err: %v", homeErr)
+	}
+	if _, ok := results["aws"]; !ok {
+		t.Error("aws should succeed")
+	}
+	if _, ok := results["kubernetes"]; !ok {
+		t.Error("kubernetes should succeed despite 'broken' failing between them")
+	}
+	if _, ok := failures["broken"]; !ok {
+		t.Error("broken should be recorded in failures")
 	}
 }
