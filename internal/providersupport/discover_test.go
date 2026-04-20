@@ -44,26 +44,33 @@ func TestInvokeDiscover_Happy(t *testing.T) {
 }
 
 func TestInvokeDiscover_NotSupported(t *testing.T) {
-	bin := stubProviderBinary(t, "")
-	// The stub exits 1 on any command other than "discover", but
-	// actually with jsonOutput="" the script emits an empty document
-	// on discover too, which would parse as an empty DiscoveryResult —
-	// so we need a different stub. Change it to one that exits 1 on
-	// discover.
-	// Instead: manually write a stub that always exits 1.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "stub")
 	script := "#!/bin/sh\nexit 1\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_ = bin // unused on this path
 	_, err := InvokeDiscover(context.Background(), path)
 	if err == nil {
 		t.Fatal("expected error for provider that doesn't support discover")
 	}
 	if !strings.Contains(err.Error(), "discover") {
 		t.Errorf("error should mention discover; got: %v", err)
+	}
+}
+
+// Exec succeeds but stdout isn't valid JSON. InvokeDiscover must
+// surface a parse error distinguishable from an exit-non-zero
+// failure — operators diagnosing a broken provider need to know
+// which category they're in.
+func TestInvokeDiscover_InvalidJSON(t *testing.T) {
+	bin := stubProviderBinary(t, "not valid json")
+	_, err := InvokeDiscover(context.Background(), bin)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !strings.Contains(err.Error(), "parse JSON") {
+		t.Errorf("error should mention parse JSON; got: %v", err)
 	}
 }
 

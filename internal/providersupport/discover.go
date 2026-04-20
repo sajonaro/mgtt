@@ -26,7 +26,18 @@ func InvokeDiscover(ctx context.Context, binaryPath string) (provider.DiscoveryR
 	}
 	var res provider.DiscoveryResult
 	if err := json.Unmarshal(stdout, &res); err != nil {
-		return provider.DiscoveryResult{}, fmt.Errorf("discover %s: parse JSON: %w (raw: %s)", binaryPath, err, string(stdout))
+		return provider.DiscoveryResult{}, fmt.Errorf("discover %s: parse JSON: %w (raw: %s)", binaryPath, err, truncate(stdout, 512))
 	}
 	return res, nil
+}
+
+// truncate returns s verbatim if len(s) <= max, otherwise the first
+// max bytes with an "…(truncated)" suffix. Used to keep error
+// messages from exploding when a misbehaving provider emits
+// megabytes of stdout.
+func truncate(s []byte, max int) string {
+	if len(s) <= max {
+		return string(s)
+	}
+	return string(s[:max]) + "…(truncated)"
 }
