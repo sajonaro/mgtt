@@ -40,9 +40,16 @@ Press Y at each step yourself, or let an AI agent drive the same loop autonomous
 
 ## See it in action
 
-### Simulation: catch model gaps in CI
+### Simulation: reason about failures without running the system
 
-Write a scenario: "if rds goes down and api crash-loops, the engine should blame rds, not api."
+Write a scenario — a tiny YAML assertion like *"if rds goes down and api crash-loops, the engine should blame rds, not api"* — and `mgtt simulate` checks that the engine concludes the same thing. No live system, no credentials, no cluster access. Runs anywhere Go runs.
+
+What you get once it's wired into CI:
+
+- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. Simulate on every PR and a failing scenario tells you *before* the model is needed at 3am.
+- **Architecture unit tests** — each scenario is a declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
+- **Design-time validation** — write the model before the system exists, reason about whose-depends-on-whom, find the holes before you build them. The engine treats your design as executable logic.
+- **Regression harness** — the next time a real incident happens, encode it as a scenario. The engine must now identify that chain forever. Your postmortems become tests.
 
 ```
 $ mgtt simulate --all
@@ -54,8 +61,6 @@ $ mgtt simulate --all
 
   4/4 scenarios passed
 ```
-
-> No running system. No credentials. Runs on every PR.
 
 [Full simulation walkthrough](concepts/simulation.md)
 

@@ -10,7 +10,16 @@ And before the system even exists, you can simulate failures against the model t
 
 ## See it in action
 
-### Simulation: catch model gaps in CI
+### Simulation: reason about failures without running the system
+
+`mgtt simulate` takes a set of hand-authored failure scenarios (`"if rds goes down and api crash-loops, root cause is rds"`) and asserts the engine concludes the same thing. No live system, no credentials — runs anywhere Go runs.
+
+What you get once it's wired into CI:
+
+- **Model drift detection** — when the real system evolves (new services, renamed components, changed dependencies), a stale model silently drifts away from reality. Simulate on every PR and a failing scenario tells you *before* the model is needed at 3am.
+- **Architecture unit tests** — each scenario is a tiny declarative assertion. Refactor the model, break a conclusion, the suite fails. Safe renames, safe dependency moves.
+- **Design-time validation** — write the model before the system exists, reason about whose-depends-on-whom, find the holes before you build them. The engine treats your design as executable logic.
+- **Regression harness** — the next time a real incident happens, encode it as a scenario. The engine must now identify that chain forever. Your incident postmortems become tests.
 
 ```
 $ mgtt simulate --all
@@ -22,8 +31,6 @@ $ mgtt simulate --all
 
   4/4 scenarios passed
 ```
-
-No running system. No credentials. Runs on every PR.
 
 ### Troubleshooting: root cause in 6 probes
 
