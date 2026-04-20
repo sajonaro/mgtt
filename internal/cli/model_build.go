@@ -123,14 +123,19 @@ func runModelBuild(ctx context.Context, f modelBuildFlags, stdout, stderr io.Wri
 func newModelBuildCmd() *cobra.Command {
 	f := modelBuildFlags{}
 	cmd := &cobra.Command{
-		Use:   "build",
-		Short: "Generate system.model.yaml from installed providers' Discover() output",
+		Use:          "build",
+		Short:        "Generate system.model.yaml from installed providers' Discover() output",
+		SilenceUsage: true,
 		Long: "Invokes every installed provider's discover subcommand,\n" +
 			"merges results, gates deletions, writes a deterministic YAML\n" +
 			"model. Commit the result to version control.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if f.mgttHome == "" {
-				f.mgttHome = mgttHomeDefault()
+				home, err := providersupport.Home()
+				if err != nil {
+					return fmt.Errorf("resolve MGTT_HOME: %w", err)
+				}
+				f.mgttHome = home
 			}
 			if f.output == "" {
 				f.output = "system.model.yaml"
@@ -147,21 +152,6 @@ func newModelBuildCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.allowDeletes, "allow-deletes", false, "accept removal of components no longer returned by discovery")
 	cmd.Flags().StringSliceVar(&f.tombstone, "tombstone", nil, "components that can be removed silently (comma-separated)")
 	return cmd
-}
-
-// mgttHomeDefault resolves the effective MGTT_HOME. No equivalent helper
-// exists in internal/cli/ — the MGTT_HOME resolution in providersupport/
-// and registry/ packages is not exported as a standalone function.
-// This is the canonical implementation for CLI flag defaulting.
-func mgttHomeDefault() string {
-	if v := os.Getenv("MGTT_HOME"); v != "" {
-		return v
-	}
-	home, _ := os.UserHomeDir()
-	if home == "" {
-		return ".mgtt"
-	}
-	return home + "/.mgtt"
 }
 
 func init() {
