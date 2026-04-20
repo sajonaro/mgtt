@@ -18,9 +18,8 @@ Additional uses ride on the same primitives: architecture unit tests (scenarios 
 ## On this page
 
 - [The system](#the-system) — example shape used through the page
-- [Step 1 — Write the model](#step-1-write-the-model)
-- [Step 2 — Write failure scenarios](#step-2-write-failure-scenarios)
-- [Step 3 — Run simulations](#step-3-run-simulations)
+- [Step 1 — Write failure scenarios](#step-1-write-failure-scenarios)
+- [Step 2 — Run simulations](#step-2-run-simulations)
 - [What a failing scenario teaches you](#what-a-failing-scenario-teaches-you)
 - [Generated scenarios](#generated-scenarios-from-scenarios-and-fuzz) — `--from-scenarios` and `--fuzz`
 - [Add to CI](#add-to-ci)
@@ -31,7 +30,7 @@ Additional uses ride on the same primitives: architecture unit tests (scenarios 
 
 ## The system
 
-Same storefront used in the [troubleshooting walkthrough](troubleshooting.md):
+Same four-component storefront as the [quickstart](../getting-started/quickstart.md) and [troubleshooting walkthrough](troubleshooting.md) — nginx fronting a React frontend and a Node.js API, backed by RDS:
 
 ```mermaid
 graph LR
@@ -43,57 +42,11 @@ graph LR
 
 ```
 
-## Step 1 — Write the model
-
-```yaml
-# system.model.yaml
-meta:
-  name: storefront
-  version: "1.0"
-  providers:
-    - kubernetes
-  vars:
-    namespace: production
-
-components:
-  nginx:
-    type: ingress
-    depends:
-      - on: frontend
-      - on: api
-
-  frontend:
-    type: deployment
-    depends:
-      - on: api
-
-  api:
-    type: deployment
-    depends:
-      - on: rds
-
-  rds:
-    providers:
-      - aws
-    type: rds_instance
-    healthy:
-      - connection_count < 500
-```
-
-```bash
-$ mgtt model validate
-
-  ✓ nginx     2 dependencies valid
-  ✓ frontend  1 dependency valid
-  ✓ api       1 dependency valid
-  ✓ rds       healthy override valid
-
-  4 components · 0 errors · 0 warnings
-```
+If you haven't seen the model yaml, read the [quickstart's Step 2](../getting-started/quickstart.md#step-2-write-the-model) first and come back. From here we focus on the scenario half.
 
 ---
 
-## Step 2 — Write failure scenarios
+## Step 1 — Write failure scenarios
 
 Each scenario injects a set of facts and asserts what the engine should conclude.
 
@@ -203,7 +156,7 @@ expect:
 
 ---
 
-## Step 3 — Run simulations
+## Step 2 — Run simulations
 
 ```bash
 $ mgtt simulate --all

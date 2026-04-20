@@ -37,78 +37,13 @@ graph LR
 
 ## Setup (done once)
 
-*Done by whoever knows the system. Not during an incident.*
+One-off, done by whoever knows the system — *not during an incident*. Full steps live in the [quickstart](../getting-started/quickstart.md); the short version is:
 
-### 1. Install providers
+1. Install providers — `mgtt provider install kubernetes aws`.
+2. Write `system.model.yaml` — components, dependencies, `healthy:` overrides. Commit alongside your Helm charts and Terraform.
+3. Validate — `mgtt model validate`.
 
-mgtt uses credentials already in your environment — kubectl config, AWS profile, etc.
-
-```bash
-$ mgtt provider install kubernetes aws
-
-  ✓ kubernetes  v1.0.0  auth: environment  access: kubectl read-only
-  ✓ aws         v0.1.0  auth: environment  access: AWS API read-only
-```
-
-### 2. Write the model
-
-```bash
-$ mgtt init
-
-  ✓ created system.model.yaml
-```
-
-Edit it to describe your system:
-
-```yaml
-# system.model.yaml
-meta:
-  name: storefront
-  version: "1.0"
-  providers:
-    - kubernetes
-  vars:
-    namespace: production
-
-components:
-  nginx:
-    type: ingress
-    depends:
-      - on: frontend
-      - on: api
-
-  frontend:
-    type: deployment
-    depends:
-      - on: api
-
-  api:
-    type: deployment
-    depends:
-      - on: rds
-
-  rds:
-    providers:
-      - aws
-    type: rds_instance
-    healthy:
-      - connection_count < 500
-```
-
-### 3. Validate
-
-```bash
-$ mgtt model validate
-
-  ✓ nginx     2 dependencies valid
-  ✓ frontend  1 dependency valid
-  ✓ api       1 dependency valid
-  ✓ rds       healthy override valid
-
-  4 components · 0 errors · 0 warnings
-```
-
-Commit alongside your Helm charts and Terraform. Setup is done.
+The rest of this page assumes those three are done and walks through the moment something breaks.
 
 ---
 
@@ -116,7 +51,7 @@ Commit alongside your Helm charts and Terraform. Setup is done.
 
 *Monday 08:14 UTC. Alert fires: "503 errors on checkout."*
 
-### 4. Start the incident
+### Start the incident
 
 ```bash
 $ mgtt incident start
@@ -124,7 +59,7 @@ $ mgtt incident start
   ✓ inc-20240205-0814-001 started
 ```
 
-### 5. Run the guided plan
+### Run the guided plan
 
 ```bash
 $ mgtt plan
@@ -186,7 +121,7 @@ $ mgtt plan
 
 The engine probed 4 components in 6 steps. It eliminated rds (healthy) and frontend (healthy), and traced the fault to api — crash-looping with 47 restarts and 0 of 3 replicas ready.
 
-### 6. Check logs, record findings
+### Check logs, record findings
 
 ```bash
 $ kubectl logs deploy/api -n production --previous | tail -3
@@ -199,7 +134,7 @@ $ mgtt fact add api last_deploy_at "2024-02-05T07:50:00Z" \
       --note "deploy 24min before incident"
 ```
 
-### 7. Close the incident
+### Close the incident
 
 ```bash
 $ mgtt incident end
