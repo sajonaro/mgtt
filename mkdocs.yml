@@ -43,6 +43,9 @@ nav:
   - Getting Started:
     - Quick Start: getting-started/quickstart.md
     - Install: getting-started/install.md
+  - Examples:
+    - Overview: examples/index.md
+    - Blue/green storefront on EKS: examples/blue-green-storefront.md
   - Concepts:
     - How It Works: concepts/how-it-works.md
     - Model Authoring: concepts/model-authoring.md
