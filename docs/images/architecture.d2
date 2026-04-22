@@ -6,10 +6,26 @@ vars: {
   d2-config: {
     layout-engine: elk
     pad: 20
+    theme-id: 200
   }
 }
 
 direction: down
+
+# Class applied to every cross-tier edge label so the annotations
+# read at a glance without zooming in.
+classes: {
+  flow: {
+    style.font-size: 22
+    style.stroke-width: 2
+    style.bold: true
+  }
+  sidenote: {
+    style.font-size: 18
+    style.stroke-dash: 3
+    style.italic: true
+  }
+}
 
 # ---- operators (row 1) -----------------------------------------------
 human: "human operator"
@@ -27,7 +43,7 @@ mgtt: "mgtt core — pure reasoning, no backend credentials" {
   cli -> engine
   mcp -> engine
   model -> engine
-  scens -> engine: "simulate mode" { style.stroke-dash: 3 }
+  scens -> engine: "simulate mode" { class: sidenote }
   engine -> state
 }
 
@@ -62,16 +78,16 @@ sut: "system under test — your production · never touched by mgtt core" {
   api -> rds
   api -> redis
   api -> queue
-  api -> tracing: "spans" { style.stroke-dash: 3 }
+  api -> tracing: "spans" { class: sidenote }
 }
 
 # ---- cross-tier flows ------------------------------------------------
 human -> mgtt.cli
 agent -> mgtt.mcp
 
-mgtt.engine -> adapters: "probe request" { style.stroke-width: 2 }
-adapters -> mgtt.engine: "parsed facts" { style.stroke-width: 2 }
-adapters -> sut: "shell / SDK" { style.stroke-width: 2 }
-sut -> adapters: "stdout / JSON" { style.stroke-width: 2 }
+mgtt.engine -> adapters: "probe request" { class: flow }
+adapters -> mgtt.engine: "parsed facts" { class: flow }
+adapters -> sut: "shell / SDK" { class: flow }
+sut -> adapters: "stdout / JSON" { class: flow }
 
-registry.local -> adapters: "loaded at startup" { style.stroke-dash: 3 }
+registry.local -> adapters: "loaded at startup" { class: sidenote }
