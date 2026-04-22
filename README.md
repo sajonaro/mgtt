@@ -2,14 +2,35 @@
 
 ## Your architecture, executable.
 
-You already draw the diagram — components, dependencies, what "healthy" means. mgtt reads it as code. One YAML model drives two modes:
+Most teams have an architecture diagram tucked away in Confluence — accurate the day it was drawn, quietly drifting out of sync with production every day after. The 3am knowledge — which service to poke first, what "healthy" looks like for each dependency, which failures cascade into which — tends to live in one engineer's head, and when they move teams or move on, the runbook moves with them. And the architecture itself becomes risky to touch, because there's no cheap way to test an architectural decision the way you'd test a function.
 
-- **At design time**, `mgtt simulate` injects synthetic failures and asserts the engine reaches the right conclusion. Runs in CI on every PR. Catches architectural drift before the diagram lies to you.
-- **At 3am**, `mgtt diagnose` runs the same engine against the live system. Real probes replace the synthetic facts. It names the broken component, eliminates the healthy ones, and hands you the chain.
+mgtt makes that diagram executable. You describe the system once in a single YAML file — components, dependencies, probes, what "healthy" means for each piece — and mgtt uses it three ways:
 
-Same model. Same reasoning. Two fixture sources.
+- **At design time**, `mgtt simulate` feeds the engine scenarios — a broken component here, a healthy baseline there, a partial degradation somewhere in between — and asserts it reaches the right conclusion each time (including "everything's fine" when nothing is broken). It runs in CI on every PR, so architectural drift gets caught before the diagram silently starts lying to you. It also closes the feedback loop on the architecture itself — change a dependency, re-run the scenarios, see what breaks — which is, effectively, TDD for the architecture.
+- **At 3am**, `mgtt diagnose` runs the same engine against the live system, with real probes replacing the synthetic facts. It names the broken component, eliminates the healthy ones, and hands you the chain from symptom to cause — instead of a Slack thread and a thousand educated guesses about which `kubectl` to try next.
+- **After the dust settles**, `mgtt incident end --suggest-scenarios` turns the incident you just resolved into a YAML scenario patch — the exact failure chain you just fought through, ready to review and commit. Merge it, and the engine has to diagnose that situation correctly forever. Postmortems become regression tests; tribal knowledge stays in version control.
+
+here is how:
+
+**In CI**, the scenarios run on every PR:
 
 ```
+$ mgtt simulate --all
+
+  all components healthy                   ✓ passed
+  api degraded, rds cold-cache             ✓ passed
+  edge throttled, downstream healthy       ✓ passed
+
+  3/3 scenarios passed
+```
+
+Every scenario is a test of the model's reasoning. Rename `rds` and forget to update its dependency, and the PR that broke the model never merges.
+
+**At 3am**, you open an incident, diagnose it, and capture what you learned:
+
+```
+$ mgtt incident start
+
 $ mgtt diagnose --suspect api
 
   ▶ probe nginx upstream_count       ✗ unhealthy
@@ -20,9 +41,13 @@ $ mgtt diagnose --suspect api
   Root cause: api.degraded
   Chain:      nginx ← api
   Probes run: 4
+
+$ mgtt incident end --suggest-scenarios
+
+  wrote .mgtt/pending-scenarios/INC-0042.patch — merge into scenarios.yaml
 ```
 
-The engine picks probes by information value, so every call rules out a branch. You didn't need to know the system — the model knew it for you. Partial visibility (RBAC refusals, transient throttles) surfaces as a flag, not an abort.
+The engine picks probes by information value, so every call rules out a branch. You didn't need to know the system — the model knew it for you. Partial visibility (RBAC refusals, transient throttles) surfaces as a flag, not an abort. The patch at the end turns what just happened into a scenario the engine has to diagnose correctly forever.
 
 ## Architecture
 
