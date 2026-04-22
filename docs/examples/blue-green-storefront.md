@@ -20,40 +20,10 @@ This page is a walkthrough, not a reference. It shows how a working engineer rea
 
 `acme-shop` is a storefront serving `shop.acme.example`. Deployed on EKS with blue/green traffic switching: two identical deployment sets (`color: blue`, `color: green`) run side-by-side, and a single `Service` (`acme-shop-svc`) points its selector at whichever color is live.
 
-```mermaid
-graph LR
-    CF([Cloudflare CDN])
-    ALB[ALB — live]
-    SVC[acme-shop-svc<br/>selector: color=active]
-    NB[nginx-blue]
-    NG[nginx-green]
-    PB[php-fpm-blue]
-    PG[php-fpm-green]
-    CB[consumer-blue]
-    CG[consumer-green]
-    CRON[cron]
-    ESO[external-secrets<br/>operator]
-    SSM[(SSM parameter)]
-    RDS[(RDS MySQL)]
-    REDIS[(ElastiCache)]
-    MQ[(AmazonMQ — RabbitMQ)]
-    OS[(OpenSearch)]
-    S3[(S3 media)]
-    CFM[CloudFront<br/>media]
+![blue/green storefront model](../images/blue-green-storefront.svg)
 
-    CF --> ALB --> SVC
-    SVC -->|active color| NB
-    SVC -->|active color| NG
-    NB --> PB
-    NG --> PG
-    PB --> RDS & REDIS & MQ & OS & S3 & ESO
-    PG --> RDS & REDIS & MQ & OS & S3 & ESO
-    CB --> MQ & RDS & REDIS & ESO
-    CG --> MQ & RDS & REDIS & ESO
-    CRON --> RDS & REDIS & MQ & ESO
-    ESO --> SSM
-    S3 --> CFM
-```
+<!-- Source: docs/images/blue-green-storefront.d2 — regenerate with `d2 docs/images/blue-green-storefront.d2 docs/images/blue-green-storefront.svg` -->
+
 
 The stateless tiers (nginx, php-fpm, consumer) come in blue and green pairs. The **shared data layer** (RDS, Redis, MQ, OpenSearch, S3) is color-agnostic — both colors connect identically. Cron is a singleton; it reads the env config from the same Secret the active color uses.
 
