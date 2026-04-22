@@ -26,51 +26,12 @@ The engine picks probes by information value, so every call rules out a branch. 
 
 ## Architecture
 
-```mermaid
-%%{init: {'flowchart': {'curve': 'stepAfter', 'nodeSpacing': 40, 'rankSpacing': 55}}}%%
-flowchart TB
-    Human["human"]
-    Agent["LLM agent"]
+![mgtt architecture](docs/images/architecture.svg)
 
-    subgraph Core["mgtt core &nbsp; · &nbsp; no creds"]
-        direction LR
-        Model[("model.yaml")]
-        Scen[("scenarios.yaml")]
-        CLI["CLI"]
-        MCP["MCP server"]
-        Eng["engine"]
-        Model --> Eng
-        Scen -.->|simulate| Eng
-        CLI --> Eng
-        MCP --> Eng
-    end
+mgtt core reasons; adapters translate to backend-specific commands; the registry publishes them. Credentials live only in the adapter layer — the engine never touches them. See [How It Works](./docs/concepts/how-it-works.md#architecture-at-a-glance) for the surrounding prose.
 
-    subgraph Adapters["adapters &nbsp; · &nbsp; hold creds"]
-        direction LR
-        K["kubernetes"]
-        A["aws"]
-        D["docker"]
-        T["terraform / tempo / quickwit / …"]
-    end
+<!-- Source: docs/images/architecture.d2 — regenerate with `d2 docs/images/architecture.d2 docs/images/architecture.svg` -->
 
-    Reg["registry<br/>registry.yaml"]
-
-    subgraph SUT["system under test"]
-        direction LR
-        NGX["nginx"] --> API["api"] --> RDS[("rds")]
-        API --> Cache["redis"]
-    end
-
-    Human --> CLI
-    Agent --> MCP
-    Eng ==>|probe| Adapters
-    Adapters ==>|facts| Eng
-    Adapters ==>|commands| SUT
-    SUT ==>|stdout| Adapters
-    Reg -.->|mgtt provider install| Adapters
-```
-
-mgtt core reasons; adapters translate to backend-specific commands; the registry publishes them. Credentials live only in the adapter layer — the engine never touches them. See [How It Works](./docs/concepts/how-it-works.md#architecture-at-a-glance) for the full picture with tracing backend, queue, and simulation-mode detail.
 
 ## Install
 
