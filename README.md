@@ -24,7 +24,7 @@ $ mgtt simulate --all
   3/3 scenarios passed
 ```
 
-Every scenario is a test of the model's reasoning. Rename `rds` and forget to update its dependency, and the PR that broke the model never merges.
+*Every scenario is a test of the model's reasoning. Rename `rds` and forget to update its dependency, and the PR that broke the model never merges.*
 
 **At 3am**, you open an incident, diagnose it, and capture what you learned:
 
@@ -47,7 +47,7 @@ $ mgtt incident end --suggest-scenarios
   wrote .mgtt/pending-scenarios/INC-0042.patch — merge into scenarios.yaml
 ```
 
-The engine picks probes by information value, so every call rules out a branch. You didn't need to know the system — the model knew it for you. Partial visibility (RBAC refusals, transient throttles) surfaces as a flag, not an abort. The patch at the end turns what just happened into a scenario the engine has to diagnose correctly forever.
+*You didn't need to know the system — the model knew it for you. Partial visibility (RBAC refusals, transient throttles) surfaces as a flag, not an abort. The patch at the end turns what just happened into a scenario the engine has to diagnose correctly forever.*
 
 ## Architecture
 
