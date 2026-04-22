@@ -39,9 +39,16 @@ This is the serving path only. Cluster operators (ArgoCD, Karpenter, ALB Control
 meta:
   name: acme-shop
   version: "1.0"
+  # Providers supply the types (cdn, deployment, rds_instance, ...) and
+  # the probes that populate facts. This system runs on EKS (kubernetes)
+  # with its data layer on AWS managed services, so both are needed.
   providers:
     - mgt-tool/kubernetes@^3.0.0
     - mgt-tool/aws@^1.0.0
+  # Model-wide variables. Substituted into probe arguments via {name}
+  # placeholders (e.g. `resource: acme-shop-{env}-rds`). A component
+  # can override any of these with its own `vars:` block — see
+  # `external-secrets` below.
   vars:
     namespace: default
     cluster: acme-shop-stage
@@ -52,6 +59,9 @@ meta:
 components:
 
   # ─── Edge / public entry ────────────────────────────────────────
+  # Kubernetes-owned types (cdn, ingress, service, deployment, operator)
+  # don't need a per-component `providers:` line — mgtt resolves them
+  # by type lookup against meta.providers.
   cloudflare:
     type: cdn
     depends:
@@ -104,6 +114,8 @@ components:
       - on: media-bucket
 
   # ─── Async workers (per color) ──────────────────────────────────
+  # `depends: [{on: x}, ...]` is inline YAML — same structure as the
+  # multi-line `- on: x` form above. Pick whichever reads cleaner.
   acme-shop-consumer-blue:
     type: deployment
     depends: [{on: mq}, {on: rds}, {on: redis}, {on: external-secrets}]
@@ -132,10 +144,17 @@ components:
       - ready_replicas >= 1
 
   # ─── AWS managed data layer ─────────────────────────────────────
+  # AWS types use short readable keys (`rds`, `redis`, `mq`) while
+  # `resource:` carries the real AWS identifier. Per-component
+  # `providers:` pins which provider resolves the type. `{env}`
+  # expands from meta.vars, so the same file ships unchanged across
+  # stage and prod — only the branch-specific `vars.env` flips.
   rds:
     type: rds_instance
     providers: [mgt-tool/aws@^1.0.0]
     resource: acme-shop-{env}-rds
+    # Per-component `healthy:` REPLACES the type default outright — it
+    # does not merge. See the notes below for why we override here.
     healthy:
       - connection_count < 500
 
@@ -173,6 +192,9 @@ components:
 
   external-secrets:
     type: operator
+    # Component-scoped `vars:` override `meta.vars:` for this component
+    # only — probes against ESO run in the `external-secrets` namespace
+    # instead of the model-wide `default`.
     vars:
       namespace: external-secrets
     depends:
