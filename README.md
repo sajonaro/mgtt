@@ -28,31 +28,47 @@ The engine picks probes by information value, so every call rules out a branch. 
 
 ```mermaid
 flowchart LR
-    Op["operator<br/>or LLM agent"]
+    Human["human"]
+    Agent["LLM agent"]
 
-    subgraph Core["mgtt core"]
-        CLI["CLI / MCP"]
+    subgraph Core["mgtt core &nbsp; · &nbsp; no creds"]
+        direction TB
+        CLI["CLI"]
+        MCP["MCP server"]
         Eng["engine"]
+        Scen[("scenarios.yaml")]
+        Model[("model.yaml")]
         CLI --> Eng
+        MCP --> Eng
+        Model --> Eng
+        Scen -.->|simulate mode| Eng
     end
 
-    subgraph Adapters["adapters"]
+    subgraph Adapters["adapters &nbsp; · &nbsp; hold creds"]
+        direction TB
         K["kubernetes"]
         A["aws"]
         D["docker"]
-        E["…"]
+        T["terraform / tempo / quickwit / ..."]
     end
 
-    SUT["system under test<br/>(real components)"]
-    Reg["registry"]
+    subgraph SUT["system under test"]
+        direction LR
+        NGX["nginx"] --> API["api"] --> RDS[("rds")]
+        API --> Cache["redis"]
+    end
+    Reg["registry<br/>(registry.yaml)"]
 
-    Op --> CLI
-    Eng <-->|facts| Adapters
-    Adapters <-->|probes| SUT
+    Human --> CLI
+    Agent --> MCP
+    Eng ==>|probe request| Adapters
+    Adapters ==>|parsed facts| Eng
+    Adapters ==>|commands| SUT
+    SUT ==>|stdout| Adapters
     Reg -.->|mgtt provider install| Adapters
 ```
 
-mgtt core reasons; adapters translate to backend-specific commands; the registry publishes them. See [How It Works](./docs/concepts/how-it-works.md#architecture-at-a-glance) for the full picture.
+mgtt core reasons; adapters translate to backend-specific commands; the registry publishes them. Credentials live only in the adapter layer — the engine never touches them. See [How It Works](./docs/concepts/how-it-works.md#architecture-at-a-glance) for the full picture with tracing backend, queue, and simulation-mode detail.
 
 ## Install
 

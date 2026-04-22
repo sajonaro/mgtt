@@ -8,58 +8,78 @@ The same model and engine serve two phases — the only difference is where fact
 
 ```mermaid
 flowchart LR
-    Operator["operator<br/>or LLM agent"]
+    Human["human operator"]
+    Agent["LLM agent<br/>(Claude Code, CI bot)"]
 
-    subgraph MGTT["mgtt core"]
+    subgraph MGTT["mgtt core &nbsp; · &nbsp; pure reasoning · no backend credentials"]
         direction TB
-        CLI["CLI / MCP server"]
-        Engine["constraint engine"]
-        Model[("system.model.yaml")]
-        Incident[("incident state")]
+        CLI["CLI<br/>simulate · diagnose · plan"]
+        MCP["MCP server<br/>stdio · HTTP + bearer"]
+        Engine["constraint engine<br/>walk · rank · eliminate"]
+        Model[("system.model.yaml<br/>components · dependencies")]
+        Scenarios[("scenarios.yaml<br/>scripted failures")]
+        State[("incident state<br/>$MGTT_HOME/incidents/")]
         CLI --> Engine
+        MCP --> Engine
         Model --> Engine
-        Engine --> Incident
+        Scenarios -.->|simulate mode| Engine
+        Engine --> State
     end
 
-    subgraph Adapters["adapters (providers)"]
+    subgraph ADAPTERS["adapters (providers) &nbsp; · &nbsp; the only place backend credentials live"]
         direction TB
-        K["kubernetes"]
-        A["aws"]
-        D["docker"]
-        Etc["…"]
+        K8s["kubernetes<br/>kubectl"]
+        AWS["aws<br/>aws-cli"]
+        Docker["docker<br/>docker CLI"]
+        Terra["terraform<br/>state"]
+        Tempo["tempo<br/>TraceQL"]
+        Qwit["quickwit<br/>search API"]
     end
 
-    subgraph Registry["registry"]
+    subgraph REG["registry"]
         direction TB
-        Remote["registry.yaml<br/>(GitHub Pages)"]
-        Local["$MGTT_HOME/providers/"]
-        Remote -.->|mgtt provider install| Local
+        Remote["registry.yaml<br/>GitHub Pages · SemVer tags"]
+        Local["$MGTT_HOME/providers/<br/>installed + verified"]
+        Remote -->|mgtt provider install| Local
     end
 
-    subgraph SUT["system under test"]
+    subgraph SUT["system under test &nbsp; · &nbsp; your production, not touched by mgtt core"]
         direction TB
-        API["api"]
-        NGX["nginx"]
-        DB["rds"]
-        Cluster["k8s cluster"]
+        NGX["nginx ingress"]
+        API["api replicas<br/>(k8s deployment)"]
+        Cache["redis"]
+        Queue["kafka / sqs"]
+        RDS[("postgres / rds")]
+        Tracing["tempo + quickwit<br/>(spans · logs)"]
+        NGX --> API
+        API --> RDS
+        API --> Cache
+        API --> Queue
+        API -.->|emits traces| Tracing
     end
 
-    Operator -->|command / tool call| CLI
-    Engine -->|probe request| Adapters
-    Adapters -->|kubectl / aws / docker| SUT
-    SUT -->|stdout| Adapters
-    Adapters -->|parsed facts| Engine
-    Local -.->|loaded at startup| Adapters
+    Human --> CLI
+    Agent --> MCP
+    Engine ==>|probe request| ADAPTERS
+    ADAPTERS ==>|shell / SDK call| SUT
+    SUT ==>|stdout · JSON · SQL rows| ADAPTERS
+    ADAPTERS ==>|parsed facts| Engine
+    Local -.->|loaded at startup| ADAPTERS
 ```
 
-Four things, three flows:
+Four things, four boundaries:
 
-- **mgtt core** owns the engine, the model, and the incident state. It is pure reasoning — no credentials, no backend SDKs.
-- **Adapters** (providers) are plugins that translate engine-level probe requests into backend-specific commands and parse the output back into typed facts. One per technology: kubernetes, aws, docker, terraform, tempo, quickwit, or your own.
-- **Registry** is the published index (`registry.yaml`) of available providers. `mgtt provider install` pulls a provider from the registry (git or image) into `$MGTT_HOME/providers/` where the runtime discovers it.
-- **System under test** is the real thing — the pods, databases, load balancers your model claims to describe. The adapters touch it; mgtt core never does.
+- **mgtt core** — the engine, the model, the scenarios, the incident store. Pure reasoning. Never opens a socket, never reads a credential. Two entry points: the CLI for humans and CI, the MCP server for LLM agents (same engine underneath).
+- **Adapters** (providers) — plugins that cross the trust boundary. Each adapter knows one backend's command-line or SDK and how to parse its output into typed facts. Credentials, RBAC, IAM — all live here, never in mgtt core.
+- **Registry** — the published index (`registry.yaml`, served off GitHub Pages, SemVer-tagged). `mgtt provider install` resolves a ref, fetches the adapter (git source or docker image), verifies the manifest, and lands it under `$MGTT_HOME/providers/` where the runtime discovers it.
+- **System under test** — the real production thing your model claims to describe. Ingress, app replicas, caches, queues, databases, tracing backends. Adapters touch it; mgtt core is strictly upstream.
 
-Facts flow engine → adapter → SUT → adapter → engine. Operators (human or LLM) talk to mgtt core via the CLI or the MCP server, never directly to adapters or the SUT.
+Two fact sources, same engine:
+
+- **Simulation mode** — `scenarios.yaml` feeds synthetic facts in CI. No adapter runs, the SUT isn't contacted, the test asserts the engine's conclusion.
+- **Diagnosis mode** — adapters run real probes against the SUT and append facts as they land. The engine re-plans after each one, narrowing the path tree until a root cause emerges.
+
+Operators — human or LLM — only ever talk to CLI / MCP. Never directly to an adapter, never to the SUT. That boundary is what makes the engine safe to hand to an agent on a CI runner.
 
 ## On this page
 
