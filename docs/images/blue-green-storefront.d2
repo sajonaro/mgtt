@@ -28,7 +28,7 @@ classes: {
 # ---- public edge ------------------------------------------------------
 cf: "Cloudflare CDN"
 alb: "ALB — live"
-svc: "acme-shop-svc\nselector: color=active"
+svc: "acme-shop-svc\nselector: color=blue"
 
 # ---- stateless tiers (per color) --------------------------------------
 blue: "blue" {
@@ -65,7 +65,7 @@ data: "shared data layer" {
 cf -> alb
 alb -> svc
 svc -> blue.nb: "active color" { class: sidenote }
-svc -> green.ng: "active color" { class: sidenote }
+svc -> green.ng: "standby" { class: sidenote }
 
 # ---- php-fpm → full shared data layer --------------------------------
 blue.pb -> data.rds
